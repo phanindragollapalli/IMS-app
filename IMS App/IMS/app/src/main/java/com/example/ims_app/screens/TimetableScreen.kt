@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -142,6 +144,7 @@ fun TimetableScreen(repository: DemoRepository) {
                 item {
                     WeeklyTimetableBoard(
                         entries = entries,
+                        userRole = repository.activeRole,
                         canDrag = { repository.canEditTimetableEntry(it) },
                         onMoveEntry = { updated ->
                             val saveError = repository.saveTimetableEntry(updated)
@@ -223,6 +226,7 @@ fun TimetableScreen(repository: DemoRepository) {
 @Composable
 private fun WeeklyTimetableBoard(
     entries: List<TimetableEntry>,
+    userRole: UserRole,
     canDrag: (TimetableEntry) -> Boolean,
     onMoveEntry: (TimetableEntry) -> Unit,
     onEdit: (TimetableEntry) -> Unit,
@@ -268,7 +272,7 @@ private fun WeeklyTimetableBoard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(86.dp)
+                            .width(100.dp)
                             .height(42.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -277,9 +281,10 @@ private fun WeeklyTimetableBoard(
                     slots.forEach { slot ->
                         Box(
                             modifier = Modifier
-                                .width(86.dp)
-                                .height(88.dp),
-                            contentAlignment = Alignment.CenterStart
+                                .width(100.dp)
+                                .heightIn(min = 110.dp)
+                                .wrapContentHeight(Alignment.Top),
+                            contentAlignment = Alignment.TopStart
                         ) {
                             Text(slot, style = MaterialTheme.typography.labelMedium)
                         }
@@ -292,7 +297,7 @@ private fun WeeklyTimetableBoard(
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(172.dp)
+                                .width(200.dp)
                                 .height(42.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -306,8 +311,9 @@ private fun WeeklyTimetableBoard(
 
                             Box(
                                 modifier = Modifier
-                                    .width(172.dp)
-                                    .height(88.dp)
+                                    .width(200.dp)
+                                    .heightIn(min = 110.dp)
+                                    .wrapContentHeight(Alignment.Top)
                                     .border(
                                         width = if (isHover) 2.dp else 1.dp,
                                         color = if (isHover) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
@@ -388,6 +394,9 @@ private fun WeeklyTimetableBoard(
                                         ) {
                                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                                 Text(entry.subject, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                                                if (userRole != UserRole.Faculty) {
+                                                    Text(entry.facultyName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
                                                 Text(entry.room, style = MaterialTheme.typography.bodySmall)
                                                 Text("${entry.startTime} - ${entry.endTime}", style = MaterialTheme.typography.bodySmall)
                                             }
@@ -422,11 +431,11 @@ private fun TimetableCard(
     onDelete: () -> Unit,
 ) {
     ElevatedCard {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(entry.subject, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("${entry.batch} • ${entry.day.label}")
-            Text("${entry.startTime} - ${entry.endTime} • ${entry.room}")
-            Text("Faculty: ${entry.facultyName}")
+            Text("${entry.batch} • ${entry.day.label}", style = MaterialTheme.typography.bodyMedium)
+            Text("${entry.startTime} - ${entry.endTime} • ${entry.room}", style = MaterialTheme.typography.bodyMedium)
+            Text("Faculty: ${entry.facultyName}", style = MaterialTheme.typography.bodyMedium)
             if (canEdit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onEdit) { Text("Edit") }
