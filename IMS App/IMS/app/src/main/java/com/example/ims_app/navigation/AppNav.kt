@@ -2,7 +2,7 @@ package com.example.ims_app.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.PeopleAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -11,6 +11,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,11 +25,11 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ims_app.data.DemoRepository
 import com.example.ims_app.screens.AttendanceScreen
 import com.example.ims_app.screens.DashboardScreen
-import com.example.ims_app.screens.ExaminationsScreen
+import com.example.ims_app.screens.TimetableScreen
 
 object Routes {
     const val Dashboard = "dashboard"
-    const val Examinations = "examinations"
+    const val Timetable = "timetable"
     const val Attendance = "attendance"
 }
 
@@ -36,14 +37,21 @@ private data class NavItem(val route: String, val label: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImsAppNav() {
+fun ImsAppNav(onLogout: () -> Unit) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.Dashboard
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("IMS Prototype") })
+            TopAppBar(
+                title = { Text("IMS Prototype • ${DemoRepository.activeRole.label}") },
+                actions = {
+                    TextButton(onClick = onLogout) {
+                        Text("Logout")
+                    }
+                }
+            )
         },
         bottomBar = {
             NavigationBar {
@@ -54,7 +62,7 @@ fun ImsAppNav() {
                         icon = {
                             when (item.route) {
                                 Routes.Dashboard -> Icon(Icons.Filled.Dashboard, contentDescription = item.label)
-                                Routes.Examinations -> Icon(Icons.Filled.Assignment, contentDescription = item.label)
+                                Routes.Timetable -> Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = item.label)
                                 else -> Icon(Icons.Filled.PeopleAlt, contentDescription = item.label)
                             }
                         },
@@ -72,12 +80,12 @@ fun ImsAppNav() {
             composable(Routes.Dashboard) {
                 DashboardScreen(
                     repository = DemoRepository,
-                    onNavigateToExaminations = { navController.navigateSingleTop(Routes.Examinations) },
+                    onNavigateToTimetable = { navController.navigateSingleTop(Routes.Timetable) },
                     onNavigateToAttendance = { navController.navigateSingleTop(Routes.Attendance) }
                 )
             }
-            composable(Routes.Examinations) {
-                ExaminationsScreen(repository = DemoRepository)
+            composable(Routes.Timetable) {
+                TimetableScreen(repository = DemoRepository)
             }
             composable(Routes.Attendance) {
                 AttendanceScreen(repository = DemoRepository)
@@ -88,7 +96,7 @@ fun ImsAppNav() {
 
 private val navItems = listOf(
     NavItem(Routes.Dashboard, "Dashboard"),
-    NavItem(Routes.Examinations, "Exams"),
+    NavItem(Routes.Timetable, "Timetable"),
     NavItem(Routes.Attendance, "Attendance")
 )
 

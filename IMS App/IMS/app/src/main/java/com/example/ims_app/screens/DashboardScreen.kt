@@ -1,7 +1,6 @@
 package com.example.ims_app.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,16 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -32,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.ims_app.BuildConfig
 import com.example.ims_app.data.DashboardMetric
 import com.example.ims_app.data.DemoRepository
 import com.example.ims_app.data.UserRole
@@ -40,11 +35,10 @@ import com.example.ims_app.data.UserRole
 @Composable
 fun DashboardScreen(
     repository: DemoRepository,
-    onNavigateToExaminations: () -> Unit,
+    onNavigateToTimetable: () -> Unit,
     onNavigateToAttendance: () -> Unit,
 ) {
-    val metrics = repository.dashboardMetrics
-    val roleOptions = UserRole.values().toList()
+    val metrics = repository.dashboardMetrics()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -66,22 +60,12 @@ fun DashboardScreen(
                         onValueChange = { repository.searchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
                         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        placeholder = { Text("Search modules, exams, batches") },
+                        placeholder = { Text("Search modules, subjects, batches") },
                         singleLine = true
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState())
-                    ) {
-                        roleOptions.forEach { role ->
-                            FilterChip(
-                                selected = repository.activeRole == role,
-                                onClick = { repository.activeRole = role },
-                                label = { Text(role.label) }
-                            )
-                        }
-                    }
+                    Text("Logged in as: ${repository.currentUser?.displayName ?: "Guest"}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Role: ${repository.activeRole.label}", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -95,20 +79,28 @@ fun DashboardScreen(
         }
 
         item {
-            SectionHeader(title = "Quick access", subtitle = "Launch the selected modules")
+            SectionHeader(title = "Quick access", subtitle = "Launch your module workflows")
         }
 
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ActionCard(
-                    title = "Examinations",
-                    subtitle = "Create sessions, publish results, and inspect status",
-                    actionText = "Open exams",
-                    onClick = onNavigateToExaminations
+                    title = "Time Table",
+                    subtitle = when (repository.activeRole) {
+                        UserRole.Student -> "View your timetable by day and slot"
+                        UserRole.Faculty -> "Update your timetable and check conflicts"
+                        UserRole.Admin -> "Manage all timetable entries"
+                    },
+                    actionText = "Open timetable",
+                    onClick = onNavigateToTimetable
                 )
                 ActionCard(
                     title = "Attendance",
-                    subtitle = "Mark a batch and review the day-wise attendance sheet",
+                    subtitle = when (repository.activeRole) {
+                        UserRole.Student -> "View your personal attendance reports"
+                        UserRole.Faculty -> "Mark attendance and generate reports"
+                        UserRole.Admin -> "Manage attendance data and reports"
+                    },
                     actionText = "Open attendance",
                     onClick = onNavigateToAttendance
                 )
@@ -116,17 +108,13 @@ fun DashboardScreen(
         }
 
         item {
-            SectionHeader(title = "Today", subtitle = "Operational snapshot for ${repository.activeRole.label}")
-        }
-
-        item {
-            AssistChip(onClick = { }, label = { Text("APPIDENTIFIER ${BuildConfig.APPIDENTIFIER}") })
+            SectionHeader(title = "Today", subtitle = "Operational snapshot")
         }
 
         items(listOf(
-            "3 exams scheduled for tomorrow",
-            "Attendance sheet saved at 09:45 AM",
-            "2 notices waiting for approval"
+            "Timetable conflicts are highlighted before save",
+            "Attendance reports support daily/monthly/subject-wise filters",
+            "Session remains valid for up to 3 days"
         )) { note ->
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Text(note, modifier = Modifier.padding(16.dp))
