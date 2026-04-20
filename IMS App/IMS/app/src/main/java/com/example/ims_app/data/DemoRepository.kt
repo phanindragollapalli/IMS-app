@@ -229,9 +229,11 @@ object DemoRepository {
         if (normalized.isBlank()) return "Batch name is required."
         if (!attendanceBatches.contains(normalized)) return "Batch not found."
         if (attendanceBatches.size <= 1) return "At least one batch must remain."
-        if (studentsByBatch[normalized].orEmpty().isNotEmpty()) return "Transfer students before deleting this batch."
-        if (timetableEntries.any { it.batch == normalized }) return "Delete timetable entries for this batch first."
-        if (attendanceSheets.any { it.batch == normalized }) return "Delete attendance sheets for this batch first."
+
+        // Cascade-delete timetable entries and attendance sheets for this batch
+        timetableEntries.removeAll { it.batch == normalized }
+        val sheetsToRemove = attendanceSheets.filter { it.batch == normalized }
+        sheetsToRemove.forEach { attendanceSheets.remove(it) }
 
         attendanceBatches.remove(normalized)
         attendanceSubjectsByBatch = attendanceSubjectsByBatch - normalized
@@ -242,6 +244,44 @@ object DemoRepository {
         if (selectedTimetableBatch == normalized) {
             selectedTimetableBatch = attendanceBatches.first()
         }
+        return null
+    }
+
+    fun renameAcademicBatch(oldName: String, newName: String): String? {
+        if (!canManageAcademicBatches()) return "Only admin can manage batches."
+        val oldNorm = oldName.trim()
+        val newNorm = newName.trim()
+        if (oldNorm.isBlank() || newNorm.isBlank()) return "Batch name is required."
+        if (!attendanceBatches.contains(oldNorm)) return "Batch not found."
+        if (oldNorm == newNorm) return null // no-op
+        if (attendanceBatches.any { it.equals(newNorm, ignoreCase = true) }) return "A batch with that name already exists."
+
+        // Rename in the batch list
+        val idx = attendanceBatches.indexOf(oldNorm)
+        attendanceBatches[idx] = newNorm
+
+        // Migrate subjects
+        val subjects = attendanceSubjectsByBatch[oldNorm].orEmpty()
+        attendanceSubjectsByBatch = (attendanceSubjectsByBatch - oldNorm) + (newNorm to subjects)
+
+        // Migrate students
+        val students = studentsByBatch[oldNorm].orEmpty().map { it.copy(batch = newNorm) }
+        studentsByBatch = (studentsByBatch - oldNorm) + (newNorm to students)
+
+        // Migrate timetable entries
+        timetableEntries.forEachIndexed { i, entry ->
+            if (entry.batch == oldNorm) timetableEntries[i] = entry.copy(batch = newNorm)
+        }
+
+        // Migrate attendance sheets
+        attendanceSheets.forEachIndexed { i, sheet ->
+            if (sheet.batch == oldNorm) attendanceSheets[i] = sheet.copy(batch = newNorm)
+        }
+
+        // Update selected state
+        if (selectedBatch == oldNorm) selectedBatch = newNorm
+        if (selectedTimetableBatch == oldNorm) selectedTimetableBatch = newNorm
+
         return null
     }
 
@@ -357,6 +397,53 @@ object DemoRepository {
                 requestedBy = currentUser?.username ?: "admin",
                 requestedAt = nowLabel(),
             )
+        )
+        return null
+    }
+
+    /** Directly transfers students without a pending-request step. Admin-only. */
+    fun executeTransfer(studentRollNos: List<String>, fromBatch: String, toBatch: String, reason: String): String? {
+        if (!canManageBatchTransfers()) return "Only admin can transfer students."
+        val source = fromBatch.trim()
+        val target = toBatch.trim()
+        val transferReason = reason.trim()
+        val normalizedRollNos = studentRollNos.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
+        if (source.isBlank() || target.isBlank()) return "Source and target batches are required."
+        if (source == target) return "Source and target batch cannot be the same."
+        if (transferReason.isBlank()) return "Transfer reason is required."
+        if (normalizedRollNos.isEmpty()) return "Select at least one student for transfer."
+        if (!attendanceBatches.contains(source) || !attendanceBatches.contains(target)) return "Invalid batch selection."
+
+        val sourceStudents = studentsByBatch[source].orEmpty().toMutableList()
+        val targetStudents = studentsByBatch[target].orEmpty().toMutableList()
+        val missing = normalizedRollNos.filter { roll -> sourceStudents.none { it.rollNo.equals(roll, ignoreCase = true) } }
+        if (missing.isNotEmpty()) return "Some selected students are not present in source batch."
+
+        val executedBy = currentUser?.username ?: "admin"
+        val executedAt = nowLabel()
+
+        normalizedRollNos.forEach { roll ->
+            val sourceStudent = sourceStudents.first { it.rollNo.equals(roll, ignoreCase = true) }
+            sourceStudents.remove(sourceStudent)
+            val nextTargetId = (targetStudents.maxOfOrNull { it.id } ?: 0) + 1
+            targetStudents.add(sourceStudent.copy(id = nextTargetId, batch = target))
+            batchTransferLogs.add(
+                0,
+                BatchTransferLog(
+                    id = nextTransferLogId(),
+                    studentRollNo = sourceStudent.rollNo,
+                    fromBatch = source,
+                    toBatch = target,
+                    reason = transferReason,
+                    approvedBy = executedBy,
+                    approvedAt = executedAt,
+                )
+            )
+        }
+
+        studentsByBatch = studentsByBatch + mapOf(
+            source to sourceStudents,
+            target to targetStudents,
         )
         return null
     }
