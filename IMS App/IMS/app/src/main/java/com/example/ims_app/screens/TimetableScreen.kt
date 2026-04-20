@@ -238,7 +238,7 @@ private fun WeeklyTimetableBoard(
     val days = WeekDay.values().toList()
     val dayLabelWidth = 92.dp
     val cellWidth = 176.dp
-    val cellHeight = 98.dp
+    val cellHeight = 125.dp
 
     val cellBounds = remember { mutableStateMapOf<SlotCell, Rect>() }
     var draggingEntryId by remember { mutableStateOf<Int?>(null) }
