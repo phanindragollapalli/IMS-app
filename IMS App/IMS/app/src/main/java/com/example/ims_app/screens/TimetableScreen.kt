@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -47,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.example.ims_app.data.DemoRepository
@@ -232,11 +231,14 @@ private fun WeeklyTimetableBoard(
     onEdit: (TimetableEntry) -> Unit,
     onDuplicate: (TimetableEntry) -> Unit,
 ) {
-    val defaultSlots = listOf("09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00")
+    val defaultSlots = listOf("08:30", "10:00", "11:30", "14:00", "15:30", "17:00")
     val slots = remember(entries) {
         (defaultSlots + entries.map { it.startTime }).distinct().sortedBy { toMinutes(it) }
     }
     val days = WeekDay.values().toList()
+    val dayLabelWidth = 92.dp
+    val cellWidth = 176.dp
+    val cellHeight = 98.dp
 
     val cellBounds = remember { mutableStateMapOf<SlotCell, Rect>() }
     var draggingEntryId by remember { mutableStateOf<Int?>(null) }
@@ -262,151 +264,164 @@ private fun WeeklyTimetableBoard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(
+                "Class duration: 30-90 minutes | Lunch break: 13:00-14:00 | Last class ends by 18:30",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Row(
                 modifier = Modifier.horizontalScroll(horizontalState),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(100.dp)
-                            .height(42.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Time", style = MaterialTheme.typography.labelMedium)
-                    }
-                    slots.forEach { slot ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(
                             modifier = Modifier
-                                .width(100.dp)
-                                .heightIn(min = 110.dp)
-                                .wrapContentHeight(Alignment.Top),
-                            contentAlignment = Alignment.TopStart
-                        ) {
-                            Text(slot, style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-
-                days.forEach { day ->
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(200.dp)
+                                .width(dayLabelWidth)
                                 .height(42.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(day.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Day", style = MaterialTheme.typography.labelMedium)
                         }
-
                         slots.forEach { slot ->
-                            val cell = SlotCell(day = day, startTime = slot)
-                            val entry = entries.firstOrNull { it.day == day && it.startTime == slot }
-                            val isHover = hoverCell == cell
-
                             Box(
                                 modifier = Modifier
-                                    .width(200.dp)
-                                    .heightIn(min = 110.dp)
-                                    .wrapContentHeight(Alignment.Top)
-                                    .border(
-                                        width = if (isHover) 2.dp else 1.dp,
-                                        color = if (isHover) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                    .onGloballyPositioned { coords ->
-                                        cellBounds[cell] = coords.boundsInRoot()
-                                    }
-                                    .padding(6.dp)
+                                    .width(cellWidth)
+                                    .height(42.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                if (entry != null) {
-                                    val editable = canDrag(entry)
-                                    var originInRoot by remember(entry.id) { mutableStateOf(Offset.Zero) }
+                                Text(slot, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
 
-                                    ElevatedCard(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .onGloballyPositioned { coords ->
-                                                originInRoot = coords.boundsInRoot().topLeft
-                                            }
-                                            .then(
-                                                if (editable) {
-                                                    Modifier
-                                                        .offset {
-                                                            if (draggingEntryId == entry.id) {
-                                                                IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt())
-                                                            } else {
-                                                                IntOffset.Zero
-                                                            }
-                                                        }
-                                                        .pointerInput(entry.id) {
-                                                            detectDragGesturesAfterLongPress(
-                                                                onDragStart = {
-                                                                    draggingEntryId = entry.id
-                                                                    hoverCell = cell
-                                                                    dragOffset = Offset.Zero
-                                                                },
-                                                                onDrag = { change, amount ->
-                                                                    change.consume()
-                                                                    dragOffset += amount
-                                                                    val pointerInRoot = originInRoot + change.position + dragOffset
-                                                                    hoverCell = cellBounds.entries.firstOrNull { (_, rect) -> rect.contains(pointerInRoot) }?.key
-                                                                },
-                                                                onDragEnd = {
-                                                                    val target = hoverCell
-                                                                    val source = SlotCell(entry.day, entry.startTime)
-                                                                    if (target != null && target != source) {
-                                                                        val duration = (toMinutes(entry.endTime) - toMinutes(entry.startTime)).coerceAtLeast(50)
-                                                                        val targetStart = toMinutes(target.startTime)
-                                                                        val updated = entry.copy(
-                                                                            day = target.day,
-                                                                            startTime = target.startTime,
-                                                                            endTime = fromMinutes(targetStart + duration)
-                                                                        )
-                                                                        onMoveEntry(updated)
-                                                                    }
-                                                                    draggingEntryId = null
-                                                                    hoverCell = null
-                                                                    dragOffset = Offset.Zero
-                                                                },
-                                                                onDragCancel = {
-                                                                    draggingEntryId = null
-                                                                    hoverCell = null
-                                                                    dragOffset = Offset.Zero
-                                                                }
-                                                            )
-                                                        }
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Column(
+                    days.forEach { day ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .width(dayLabelWidth)
+                                    .height(cellHeight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(day.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            slots.forEach { slot ->
+                                val cell = SlotCell(day = day, startTime = slot)
+                                val entry = entries.firstOrNull { it.day == day && it.startTime == slot }
+                                val isHover = hoverCell == cell
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(cellWidth)
+                                        .height(cellHeight)
+                                        .border(
+                                            width = if (isHover) 2.dp else 1.dp,
+                                            color = if (isHover) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .onGloballyPositioned { coords ->
+                                            cellBounds[cell] = coords.boundsInRoot()
+                                        }
+                                        .padding(6.dp)
+                                ) {
+                                    if (entry != null) {
+                                        val editable = canDrag(entry)
+                                        var originInRoot by remember(entry.id) { mutableStateOf(Offset.Zero) }
+
+                                        ElevatedCard(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .padding(8.dp),
-                                            verticalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                Text(entry.subject, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                                                if (userRole != UserRole.Faculty) {
-                                                    Text(entry.facultyName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                .onGloballyPositioned { coords ->
+                                                    originInRoot = coords.boundsInRoot().topLeft
                                                 }
-                                                Text(entry.room, style = MaterialTheme.typography.bodySmall)
-                                                Text("${entry.startTime} - ${entry.endTime}", style = MaterialTheme.typography.bodySmall)
-                                            }
-                                            if (editable) {
-                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    TextButton(onClick = { onEdit(entry) }, contentPadding = PaddingValues(0.dp)) {
-                                                        Text("Edit")
+                                                .then(
+                                                    if (editable) {
+                                                        Modifier
+                                                            .offset {
+                                                                if (draggingEntryId == entry.id) {
+                                                                    IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt())
+                                                                } else {
+                                                                    IntOffset.Zero
+                                                                }
+                                                            }
+                                                            .pointerInput(entry.id) {
+                                                                detectDragGesturesAfterLongPress(
+                                                                    onDragStart = {
+                                                                        draggingEntryId = entry.id
+                                                                        hoverCell = cell
+                                                                        dragOffset = Offset.Zero
+                                                                    },
+                                                                    onDrag = { change, amount ->
+                                                                        change.consume()
+                                                                        dragOffset += amount
+                                                                        val pointerInRoot = originInRoot + change.position + dragOffset
+                                                                        hoverCell = cellBounds.entries.firstOrNull { (_, rect) -> rect.contains(pointerInRoot) }?.key
+                                                                    },
+                                                                    onDragEnd = {
+                                                                        val target = hoverCell
+                                                                        val source = SlotCell(entry.day, entry.startTime)
+                                                                        if (target != null && target != source) {
+                                                                            val duration = (toMinutes(entry.endTime) - toMinutes(entry.startTime)).coerceAtLeast(30)
+                                                                            val targetStart = toMinutes(target.startTime)
+                                                                            val updated = entry.copy(
+                                                                                day = target.day,
+                                                                                startTime = target.startTime,
+                                                                                endTime = fromMinutes(targetStart + duration)
+                                                                            )
+                                                                            onMoveEntry(updated)
+                                                                        }
+                                                                        draggingEntryId = null
+                                                                        hoverCell = null
+                                                                        dragOffset = Offset.Zero
+                                                                    },
+                                                                    onDragCancel = {
+                                                                        draggingEntryId = null
+                                                                        hoverCell = null
+                                                                        dragOffset = Offset.Zero
+                                                                    }
+                                                                )
+                                                            }
+                                                    } else {
+                                                        Modifier
                                                     }
-                                                    TextButton(onClick = { onDuplicate(entry) }, contentPadding = PaddingValues(0.dp)) {
-                                                        Text("Duplicate")
+                                                )
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(8.dp),
+                                                verticalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text(
+                                                        entry.subject,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    if (userRole != UserRole.Faculty) {
+                                                        Text(
+                                                            entry.facultyName,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Text(entry.room, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text("${entry.startTime} - ${entry.endTime}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                                }
+                                                if (editable) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        TextButton(onClick = { onEdit(entry) }, contentPadding = PaddingValues(0.dp)) {
+                                                            Text("Edit", maxLines = 1)
+                                                        }
+                                                        TextButton(onClick = { onDuplicate(entry) }, contentPadding = PaddingValues(0.dp)) {
+                                                            Text("Duplicate", maxLines = 1)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -461,8 +476,13 @@ private fun TimetableEditorDialog(
     var subject by remember(initial) { mutableStateOf(initial?.subject ?: "") }
     var batch by remember(initial) { mutableStateOf(initial?.batch ?: repository.selectedTimetableBatch) }
     var day by remember(initial) { mutableStateOf(initial?.day ?: WeekDay.Monday) }
-    var startTime by remember(initial) { mutableStateOf(initial?.startTime ?: "09:00") }
-    var endTime by remember(initial) { mutableStateOf(initial?.endTime ?: "09:50") }
+    var startTime by remember(initial) { mutableStateOf(initial?.startTime ?: "08:30") }
+    var durationMinutes by remember(initial) {
+        mutableStateOf(
+            ((toMinutes(initial?.endTime ?: "10:00") - toMinutes(initial?.startTime ?: "08:30"))
+                .coerceIn(30, 90)).toString()
+        )
+    }
     var room by remember(initial) { mutableStateOf(initial?.room ?: "R-101") }
     var facultyUsername by remember(initial) { mutableStateOf(initial?.facultyUsername ?: "faculty1") }
     var facultyName by remember(initial) { mutableStateOf(initial?.facultyName ?: (currentUser?.displayName ?: "Faculty")) }
@@ -471,13 +491,15 @@ private fun TimetableEditorDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = {
+                val resolvedDuration = durationMinutes.toIntOrNull()?.coerceIn(30, 90) ?: 90
+                val resolvedEndTime = fromMinutes(toMinutes(startTime) + resolvedDuration)
                 val candidate = TimetableEntry(
                     id = initial?.id ?: repository.nextTimetableId(),
                     subject = subject.ifBlank { "Untitled" },
                     batch = batch,
                     day = day,
                     startTime = startTime,
-                    endTime = endTime,
+                    endTime = resolvedEndTime,
                     room = room,
                     facultyUsername = if (isFaculty) (currentUser?.username ?: "faculty1") else facultyUsername.ifBlank { "faculty1" },
                     facultyName = if (isFaculty) (currentUser?.displayName ?: facultyName) else facultyName,
@@ -497,7 +519,12 @@ private fun TimetableEditorDialog(
                     }
                 }
                 OutlinedTextField(value = startTime, onValueChange = { startTime = it }, label = { Text("Start (HH:MM)") })
-                OutlinedTextField(value = endTime, onValueChange = { endTime = it }, label = { Text("End (HH:MM)") })
+                OutlinedTextField(
+                    value = durationMinutes,
+                    onValueChange = { durationMinutes = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Duration (minutes)") },
+                    singleLine = true
+                )
                 OutlinedTextField(value = room, onValueChange = { room = it }, label = { Text("Room") })
                 if (!isFaculty) {
                     OutlinedTextField(value = facultyUsername, onValueChange = { facultyUsername = it }, label = { Text("Faculty username") })

@@ -9,6 +9,13 @@ import java.util.Date
 import java.util.Locale
 
 object DemoRepository {
+    private const val TIMETABLE_DAY_START = 8 * 60 + 30
+    private const val TIMETABLE_LUNCH_START = 13 * 60
+    private const val TIMETABLE_LUNCH_END = 14 * 60
+    private const val TIMETABLE_DAY_END = 18 * 60 + 30
+    private const val TIMETABLE_MIN_SLOT_MINUTES = 30
+    private const val TIMETABLE_MAX_SLOT_MINUTES = 90
+
     var currentUser by mutableStateOf<SessionUser?>(null)
     var activeRole by mutableStateOf(UserRole.Admin)
     var localizationSettings by mutableStateOf(UserLocalizationSettings())
@@ -72,10 +79,10 @@ object DemoRepository {
     private val batchTransferLogs = mutableStateListOf<BatchTransferLog>()
 
     val timetableEntries = mutableStateListOf(
-        TimetableEntry(1, "Database Systems", "B.Tech CSE - Sem 4", WeekDay.Monday, "09:00", "09:50", "R-201", "faculty1", "Dr. Rao"),
-        TimetableEntry(2, "Operating Systems", "B.Tech CSE - Sem 4", WeekDay.Monday, "10:00", "10:50", "R-202", "faculty1", "Dr. Rao"),
-        TimetableEntry(3, "Software Engineering", "B.Tech CSE - Sem 6", WeekDay.Tuesday, "11:00", "11:50", "R-301", "faculty1", "Dr. Rao"),
-        TimetableEntry(4, "Business Communication", "BBA - Sem 2", WeekDay.Wednesday, "09:00", "09:50", "R-105", "admin", "System Admin")
+        TimetableEntry(1, "Database Systems", "B.Tech CSE - Sem 4", WeekDay.Monday, "08:30", "10:00", "R-201", "faculty1", "Dr. Rao"),
+        TimetableEntry(2, "Operating Systems", "B.Tech CSE - Sem 4", WeekDay.Monday, "10:00", "11:30", "R-202", "faculty1", "Dr. Rao"),
+        TimetableEntry(3, "Software Engineering", "B.Tech CSE - Sem 6", WeekDay.Tuesday, "14:00", "15:30", "R-301", "faculty1", "Dr. Rao"),
+        TimetableEntry(4, "Business Communication", "BBA - Sem 2", WeekDay.Wednesday, "15:30", "17:00", "R-105", "admin", "System Admin")
     )
 
     val attendanceSheets = mutableStateListOf(
@@ -470,6 +477,7 @@ object DemoRepository {
         if (activeRole == UserRole.Faculty && currentUser?.username != entry.facultyUsername) {
             return "Faculty can update only their own timetable entries."
         }
+        validateTimetableWindow(entry)?.let { return it }
         if (isCourseWeeklyLimitExceeded(entry)) {
             return "A course can have at most 3 classes per week for the same batch."
         }
@@ -523,6 +531,25 @@ object DemoRepository {
             it.id != candidate.id && it.subject == candidate.subject && it.batch == candidate.batch
         }
         return sameCourseCount >= 3
+    }
+
+    private fun validateTimetableWindow(candidate: TimetableEntry): String? {
+        val start = timeToMinutes(candidate.startTime)
+        val end = timeToMinutes(candidate.endTime)
+        if (start < 0 || end <= start) return "Invalid start/end time format."
+        if (start < TIMETABLE_DAY_START) return "Timetable starts at 08:30."
+        if (end > TIMETABLE_DAY_END) return "Classes must end by 18:30."
+        if (start < TIMETABLE_LUNCH_END && end > TIMETABLE_LUNCH_START) {
+            return "13:00-14:00 is reserved as lunch break."
+        }
+        val duration = end - start
+        if (duration < TIMETABLE_MIN_SLOT_MINUTES) {
+            return "Each timetable class must be at least 30 minutes."
+        }
+        if (duration > TIMETABLE_MAX_SLOT_MINUTES) {
+            return "A timetable class can be at most 90 minutes."
+        }
+        return null
     }
 
     private fun timeToMinutes(time: String): Int {
