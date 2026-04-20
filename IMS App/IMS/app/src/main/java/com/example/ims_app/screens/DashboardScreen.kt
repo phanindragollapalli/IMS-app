@@ -24,13 +24,17 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.example.ims_app.data.AppCurrency
 import com.example.ims_app.data.AppLanguage
 import com.example.ims_app.data.AppTimeZone
+import com.example.ims_app.data.TransferStatus
 import com.example.ims_app.data.DashboardMetric
 import com.example.ims_app.data.DemoRepository
 import com.example.ims_app.data.GeneralSettings
@@ -141,6 +146,14 @@ fun DashboardScreen(
         }
 
         item {
+            SectionHeader(title = "Academic management", subtitle = "Courses, batches, subjects, electives and transfers")
+        }
+
+        item {
+            AcademicManagementCard(repository = repository)
+        }
+
+        item {
             SectionHeader(title = "Configuration", subtitle = "Language settings and basic configuration")
         }
 
@@ -221,6 +234,348 @@ private fun LocalizationSettingsCard(
                 optionLabel = { it.label },
                 onOptionSelected = { selected -> onSettingsChange(settings.copy(timeZone = selected)) }
             )
+        }
+    }
+}
+
+@Composable
+private fun AcademicManagementCard(repository: DemoRepository) {
+    val batches = repository.attendanceBatches()
+    val courses = repository.courses()
+    val canManageCatalog = repository.canManageAcademicCatalog()
+    val canManageBatches = repository.canManageAcademicBatches()
+    val canManageTransfers = repository.canManageBatchTransfers()
+
+    var message by remember { mutableStateOf("") }
+    var editingCourseId by remember { mutableStateOf<Int?>(null) }
+    var courseCode by remember { mutableStateOf("") }
+    var courseName by remember { mutableStateOf("") }
+
+    var newBatchName by remember { mutableStateOf("") }
+
+    var selectedSubjectBatch by remember { mutableStateOf(batches.firstOrNull().orEmpty()) }
+    var subjectName by remember { mutableStateOf("") }
+    var subjectElective by remember { mutableStateOf(false) }
+
+    var sourceBatch by remember { mutableStateOf(batches.firstOrNull().orEmpty()) }
+    var targetBatch by remember { mutableStateOf(batches.drop(1).firstOrNull() ?: batches.firstOrNull().orEmpty()) }
+    var transferReason by remember { mutableStateOf("") }
+    val selectedRollNos = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(batches) {
+        if (batches.isEmpty()) return@LaunchedEffect
+        if (selectedSubjectBatch !in batches) {
+            selectedSubjectBatch = batches.first()
+        }
+        if (sourceBatch !in batches) {
+            sourceBatch = batches.first()
+        }
+        val targetCandidates = batches.filterNot { it == sourceBatch }
+        if (targetBatch !in targetCandidates) {
+            targetBatch = targetCandidates.firstOrNull().orEmpty()
+        }
+    }
+
+    val sourceStudents = repository.studentsForBatch(sourceBatch)
+    LaunchedEffect(sourceBatch, sourceStudents.size) {
+        selectedRollNos.removeAll { selected -> sourceStudents.none { it.rollNo == selected } }
+    }
+
+    ElevatedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Course management", style = MaterialTheme.typography.labelLarge)
+
+            OutlinedTextField(
+                value = courseCode,
+                onValueChange = { courseCode = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Course code") },
+                singleLine = true,
+                enabled = canManageCatalog,
+            )
+            OutlinedTextField(
+                value = courseName,
+                onValueChange = { courseName = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Course name") },
+                singleLine = true,
+                enabled = canManageCatalog,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        val error = if (editingCourseId == null) {
+                            repository.addCourse(courseCode, courseName)
+                        } else {
+                            repository.updateCourse(editingCourseId ?: -1, courseCode, courseName)
+                        }
+                        message = error ?: "Course saved successfully."
+                        if (error == null) {
+                            editingCourseId = null
+                            courseCode = ""
+                            courseName = ""
+                        }
+                    },
+                    enabled = canManageCatalog,
+                ) {
+                    Text(if (editingCourseId == null) "Add course" else "Update course")
+                }
+                TextButton(
+                    onClick = {
+                        editingCourseId = null
+                        courseCode = ""
+                        courseName = ""
+                    },
+                    enabled = canManageCatalog,
+                ) {
+                    Text("Clear")
+                }
+            }
+
+            courses.forEach { course ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${course.code} - ${course.name}", style = MaterialTheme.typography.bodyMedium)
+                    if (canManageCatalog) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(onClick = {
+                                editingCourseId = course.id
+                                courseCode = course.code
+                                courseName = course.name
+                            }) { Text("Edit") }
+                            TextButton(onClick = {
+                                message = repository.deleteCourse(course.id) ?: "Course deleted."
+                            }) { Text("Delete") }
+                        }
+                    }
+                }
+            }
+
+            Text("Batch management", style = MaterialTheme.typography.labelLarge)
+            OutlinedTextField(
+                value = newBatchName,
+                onValueChange = { newBatchName = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("New batch name") },
+                singleLine = true,
+                enabled = canManageBatches,
+            )
+            TextButton(
+                onClick = {
+                    message = repository.addAcademicBatch(newBatchName) ?: "Batch added."
+                    if (message == "Batch added.") newBatchName = ""
+                },
+                enabled = canManageBatches,
+            ) {
+                Text("Add batch")
+            }
+            batches.forEach { batch ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(batch, style = MaterialTheme.typography.bodyMedium)
+                    if (canManageBatches) {
+                        TextButton(onClick = {
+                            message = repository.removeAcademicBatch(batch) ?: "Batch removed."
+                        }) {
+                            Text("Remove")
+                        }
+                    }
+                }
+            }
+
+            Text("Subjects and electives", style = MaterialTheme.typography.labelLarge)
+            if (batches.isNotEmpty()) {
+                EnumDropdownField(
+                    label = "Batch",
+                    selectedOption = selectedSubjectBatch,
+                    options = batches,
+                    optionLabel = { it },
+                    onOptionSelected = { selectedSubjectBatch = it },
+                    enabled = canManageCatalog,
+                )
+                OutlinedTextField(
+                    value = subjectName,
+                    onValueChange = { subjectName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Subject name") },
+                    singleLine = true,
+                    enabled = canManageCatalog,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Mark as elective", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = subjectElective,
+                        onCheckedChange = { subjectElective = it },
+                        enabled = canManageCatalog,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        message = repository.addManagedSubject(selectedSubjectBatch, subjectName, subjectElective) ?: "Subject added."
+                        if (message == "Subject added.") {
+                            subjectName = ""
+                            subjectElective = false
+                        }
+                    },
+                    enabled = canManageCatalog,
+                ) {
+                    Text("Add subject")
+                }
+
+                repository.managedSubjects(selectedSubjectBatch).forEach { managed ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (managed.isElective) "${managed.name} (Elective)" else managed.name,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (canManageCatalog) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = {
+                                    message = repository.updateManagedSubject(
+                                        selectedSubjectBatch,
+                                        managed.name,
+                                        managed.name,
+                                        !managed.isElective,
+                                    ) ?: "Subject updated."
+                                }) {
+                                    Text(if (managed.isElective) "Make core" else "Make elective")
+                                }
+                                TextButton(onClick = {
+                                    message = repository.deleteManagedSubject(selectedSubjectBatch, managed.name) ?: "Subject deleted."
+                                }) {
+                                    Text("Delete")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text("Batch transfers", style = MaterialTheme.typography.labelLarge)
+            if (canManageTransfers && batches.size > 1) {
+                EnumDropdownField(
+                    label = "From batch",
+                    selectedOption = sourceBatch,
+                    options = batches,
+                    optionLabel = { it },
+                    onOptionSelected = {
+                        sourceBatch = it
+                        val targetCandidates = batches.filterNot { batch -> batch == sourceBatch }
+                        if (targetBatch !in targetCandidates) {
+                            targetBatch = targetCandidates.firstOrNull().orEmpty()
+                        }
+                    }
+                )
+                EnumDropdownField(
+                    label = "To batch",
+                    selectedOption = targetBatch,
+                    options = batches.filterNot { it == sourceBatch },
+                    optionLabel = { it },
+                    onOptionSelected = { targetBatch = it }
+                )
+                OutlinedTextField(
+                    value = transferReason,
+                    onValueChange = { transferReason = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Transfer reason") },
+                    singleLine = true,
+                )
+
+                Text("Select students", style = MaterialTheme.typography.bodyMedium)
+                sourceStudents.forEach { student ->
+                    FilterChip(
+                        selected = selectedRollNos.contains(student.rollNo),
+                        onClick = {
+                            if (selectedRollNos.contains(student.rollNo)) {
+                                selectedRollNos.remove(student.rollNo)
+                            } else {
+                                selectedRollNos.add(student.rollNo)
+                            }
+                        },
+                        label = { Text("${student.name} (${student.rollNo})") }
+                    )
+                }
+
+                TextButton(onClick = {
+                    val error = if (selectedRollNos.size <= 1) {
+                        repository.initiateSingleTransfer(
+                            studentRollNo = selectedRollNos.firstOrNull().orEmpty(),
+                            fromBatch = sourceBatch,
+                            toBatch = targetBatch,
+                            reason = transferReason,
+                        )
+                    } else {
+                        repository.initiateBulkTransfer(
+                            studentRollNos = selectedRollNos,
+                            fromBatch = sourceBatch,
+                            toBatch = targetBatch,
+                            reason = transferReason,
+                        )
+                    }
+                    message = error ?: "Transfer request submitted."
+                    if (error == null) {
+                        selectedRollNos.clear()
+                        transferReason = ""
+                    }
+                }) {
+                    Text(if (selectedRollNos.size > 1) "Create bulk transfer request" else "Create single transfer request")
+                }
+
+                repository.transferRequests().filter { it.status == TransferStatus.Pending }.forEach { request ->
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Request #${request.id}: ${request.studentRollNos.size} student(s), ${request.fromBatch} -> ${request.toBatch}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text("Reason: ${request.reason}", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                message = repository.approveTransferRequest(request.id) ?: "Transfer approved."
+                            }) { Text("Approve") }
+                            TextButton(onClick = {
+                                message = repository.rejectTransferRequest(request.id) ?: "Transfer rejected."
+                            }) { Text("Reject") }
+                        }
+                    }
+                }
+
+                repository.transferHistory().take(5).forEach { log ->
+                    Text(
+                        "${log.studentRollNo}: ${log.fromBatch} -> ${log.toBatch} (${log.approvedAt})",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            } else {
+                Text(
+                    "Only admin can create and approve transfer requests.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (message.isNotBlank()) {
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }

@@ -83,6 +83,46 @@ data class GeneralSettings(
     val defaultAttendanceThreshold: Int = 75,
 )
 
+data class Course(
+    val id: Int,
+    val code: String,
+    val name: String,
+)
+
+data class BatchSubject(
+    val name: String,
+    val isElective: Boolean = false,
+)
+
+enum class TransferStatus(val label: String) {
+    Pending("Pending"),
+    Approved("Approved"),
+    Rejected("Rejected")
+}
+
+data class BatchTransferRequest(
+    val id: Int,
+    val studentRollNos: List<String>,
+    val fromBatch: String,
+    val toBatch: String,
+    val reason: String,
+    val status: TransferStatus,
+    val requestedBy: String,
+    val requestedAt: String,
+    val approvedBy: String? = null,
+    val decidedAt: String? = null,
+)
+
+data class BatchTransferLog(
+    val id: Int,
+    val studentRollNo: String,
+    val fromBatch: String,
+    val toBatch: String,
+    val reason: String,
+    val approvedBy: String,
+    val approvedAt: String,
+)
+
 data class DashboardMetric(
     val title: String,
     val value: String,

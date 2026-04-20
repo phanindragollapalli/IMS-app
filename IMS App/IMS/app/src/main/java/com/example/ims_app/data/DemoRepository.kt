@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object DemoRepository {
     var currentUser by mutableStateOf<SessionUser?>(null)
@@ -24,9 +27,16 @@ object DemoRepository {
 
     private var attendanceSubjectsByBatch by mutableStateOf(
         mapOf(
-            "B.Tech CSE - Sem 4" to listOf("Database Systems", "Operating Systems"),
-            "B.Tech CSE - Sem 6" to listOf("Software Engineering"),
-            "BBA - Sem 2" to listOf("Business Communication")
+            "B.Tech CSE - Sem 4" to listOf(
+                BatchSubject("Database Systems"),
+                BatchSubject("Operating Systems")
+            ),
+            "B.Tech CSE - Sem 6" to listOf(
+                BatchSubject("Software Engineering")
+            ),
+            "BBA - Sem 2" to listOf(
+                BatchSubject("Business Communication")
+            )
         )
     )
 
@@ -50,6 +60,16 @@ object DemoRepository {
             )
         )
     )
+
+    private val coursesState = mutableStateListOf(
+        Course(1, "CSE401", "Database Systems"),
+        Course(2, "CSE402", "Operating Systems"),
+        Course(3, "CSE601", "Software Engineering"),
+        Course(4, "BBA201", "Business Communication")
+    )
+
+    private val batchTransferRequests = mutableStateListOf<BatchTransferRequest>()
+    private val batchTransferLogs = mutableStateListOf<BatchTransferLog>()
 
     val timetableEntries = mutableStateListOf(
         TimetableEntry(1, "Database Systems", "B.Tech CSE - Sem 4", WeekDay.Monday, "09:00", "09:50", "R-201", "faculty1", "Dr. Rao"),
@@ -132,6 +152,276 @@ object DemoRepository {
             )
             else -> generalSettings
         }
+    }
+
+    fun canManageAcademicCatalog(): Boolean = activeRole == UserRole.Admin || activeRole == UserRole.Faculty
+
+    fun canManageAcademicBatches(): Boolean = activeRole == UserRole.Admin
+
+    fun canManageBatchTransfers(): Boolean = activeRole == UserRole.Admin
+
+    fun courses(): List<Course> = coursesState.toList().sortedWith(compareBy({ it.code }, { it.name }))
+
+    fun managedSubjects(batch: String): List<BatchSubject> = attendanceSubjectsByBatch[batch].orEmpty()
+
+    fun studentsForBatch(batch: String): List<StudentRecord> = studentsByBatch[batch].orEmpty().sortedBy { it.rollNo }
+
+    fun transferRequests(): List<BatchTransferRequest> = batchTransferRequests.toList().sortedByDescending { it.id }
+
+    fun transferHistory(): List<BatchTransferLog> = batchTransferLogs.toList().sortedByDescending { it.id }
+
+    fun addCourse(code: String, name: String): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage courses."
+        val normalizedCode = code.trim().uppercase()
+        val normalizedName = name.trim()
+        if (normalizedCode.isBlank() || normalizedName.isBlank()) return "Course code and name are required."
+        if (coursesState.any { it.code.equals(normalizedCode, ignoreCase = true) }) {
+            return "Course code already exists."
+        }
+        val nextId = (coursesState.maxOfOrNull { it.id } ?: 0) + 1
+        coursesState.add(Course(nextId, normalizedCode, normalizedName))
+        return null
+    }
+
+    fun updateCourse(courseId: Int, code: String, name: String): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage courses."
+        val normalizedCode = code.trim().uppercase()
+        val normalizedName = name.trim()
+        if (normalizedCode.isBlank() || normalizedName.isBlank()) return "Course code and name are required."
+        val index = coursesState.indexOfFirst { it.id == courseId }
+        if (index < 0) return "Course not found."
+        if (coursesState.any { it.id != courseId && it.code.equals(normalizedCode, ignoreCase = true) }) {
+            return "Course code already exists."
+        }
+        coursesState[index] = coursesState[index].copy(code = normalizedCode, name = normalizedName)
+        return null
+    }
+
+    fun deleteCourse(courseId: Int): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage courses."
+        val target = coursesState.firstOrNull { it.id == courseId } ?: return "Course not found."
+        coursesState.remove(target)
+        return null
+    }
+
+    fun addAcademicBatch(batch: String): String? {
+        if (!canManageAcademicBatches()) return "Only admin can manage batches."
+        val normalized = batch.trim()
+        if (normalized.isBlank()) return "Batch name is required."
+        if (attendanceBatches.any { it.equals(normalized, ignoreCase = true) }) return "Batch already exists."
+
+        attendanceBatches.add(normalized)
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalized to listOf(BatchSubject("General")))
+        studentsByBatch = studentsByBatch + (normalized to emptyList())
+        return null
+    }
+
+    fun removeAcademicBatch(batch: String): String? {
+        if (!canManageAcademicBatches()) return "Only admin can manage batches."
+        val normalized = batch.trim()
+        if (normalized.isBlank()) return "Batch name is required."
+        if (!attendanceBatches.contains(normalized)) return "Batch not found."
+        if (attendanceBatches.size <= 1) return "At least one batch must remain."
+        if (studentsByBatch[normalized].orEmpty().isNotEmpty()) return "Transfer students before deleting this batch."
+        if (timetableEntries.any { it.batch == normalized }) return "Delete timetable entries for this batch first."
+        if (attendanceSheets.any { it.batch == normalized }) return "Delete attendance sheets for this batch first."
+
+        attendanceBatches.remove(normalized)
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch - normalized
+        studentsByBatch = studentsByBatch - normalized
+        if (selectedBatch == normalized) {
+            selectedBatch = attendanceBatches.first()
+        }
+        if (selectedTimetableBatch == normalized) {
+            selectedTimetableBatch = attendanceBatches.first()
+        }
+        return null
+    }
+
+    fun addManagedSubject(batch: String, subject: String, isElective: Boolean): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage subjects."
+        val normalizedBatch = batch.trim()
+        val normalizedSubject = subject.trim()
+        if (normalizedBatch.isBlank() || normalizedSubject.isBlank()) return "Batch and subject are required."
+        val existing = attendanceSubjectsByBatch[normalizedBatch]
+            ?: return "Batch not found. Create the batch first."
+        if (existing.any { it.name.equals(normalizedSubject, ignoreCase = true) }) {
+            return "Subject already exists in this batch."
+        }
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (
+            normalizedBatch to (existing + BatchSubject(normalizedSubject, isElective))
+        )
+        return null
+    }
+
+    fun updateManagedSubject(batch: String, currentName: String, newName: String, isElective: Boolean): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage subjects."
+        val normalizedBatch = batch.trim()
+        val normalizedCurrent = currentName.trim()
+        val normalizedNew = newName.trim()
+        if (normalizedBatch.isBlank() || normalizedCurrent.isBlank() || normalizedNew.isBlank()) {
+            return "Batch and subject name are required."
+        }
+        val existing = attendanceSubjectsByBatch[normalizedBatch] ?: return "Batch not found."
+        val index = existing.indexOfFirst { it.name.equals(normalizedCurrent, ignoreCase = true) }
+        if (index < 0) return "Subject not found in this batch."
+        if (existing.any { it.name.equals(normalizedNew, ignoreCase = true) && !it.name.equals(normalizedCurrent, ignoreCase = true) }) {
+            return "Another subject with this name already exists."
+        }
+        val updatedSubjects = existing.toMutableList()
+        updatedSubjects[index] = BatchSubject(normalizedNew, isElective)
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalizedBatch to updatedSubjects)
+
+        if (selectedBatch == normalizedBatch && selectedSubject.equals(normalizedCurrent, ignoreCase = true)) {
+            selectedSubject = normalizedNew
+        }
+
+        attendanceSheets.indices.forEach { i ->
+            val sheet = attendanceSheets[i]
+            if (sheet.batch == normalizedBatch && sheet.subject.equals(normalizedCurrent, ignoreCase = true)) {
+                attendanceSheets[i] = sheet.copy(subject = normalizedNew)
+            }
+        }
+
+        timetableEntries.indices.forEach { i ->
+            val entry = timetableEntries[i]
+            if (entry.batch == normalizedBatch && entry.subject.equals(normalizedCurrent, ignoreCase = true)) {
+                timetableEntries[i] = entry.copy(subject = normalizedNew)
+            }
+        }
+
+        return null
+    }
+
+    fun deleteManagedSubject(batch: String, subject: String): String? {
+        if (!canManageAcademicCatalog()) return "You are not allowed to manage subjects."
+        val normalizedBatch = batch.trim()
+        val normalizedSubject = subject.trim()
+        if (normalizedBatch.isBlank() || normalizedSubject.isBlank()) return "Batch and subject are required."
+        val existing = attendanceSubjectsByBatch[normalizedBatch] ?: return "Batch not found."
+        val index = existing.indexOfFirst { it.name.equals(normalizedSubject, ignoreCase = true) }
+        if (index < 0) return "Subject not found in this batch."
+        if (existing.size <= 1) return "A batch must have at least one subject."
+        if (attendanceSheets.any { it.batch == normalizedBatch && it.subject.equals(normalizedSubject, ignoreCase = true) }) {
+            return "Cannot delete subject because attendance records exist."
+        }
+        if (timetableEntries.any { it.batch == normalizedBatch && it.subject.equals(normalizedSubject, ignoreCase = true) }) {
+            return "Cannot delete subject because timetable entries exist."
+        }
+
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (
+            normalizedBatch to existing.filterNot { it.name.equals(normalizedSubject, ignoreCase = true) }
+        )
+        if (selectedBatch == normalizedBatch && selectedSubject.equals(normalizedSubject, ignoreCase = true)) {
+            selectedSubject = subjectsForBatch(normalizedBatch).firstOrNull() ?: selectedSubject
+        }
+        return null
+    }
+
+    fun initiateSingleTransfer(studentRollNo: String, fromBatch: String, toBatch: String, reason: String): String? {
+        return initiateBulkTransfer(listOf(studentRollNo), fromBatch, toBatch, reason)
+    }
+
+    fun initiateBulkTransfer(studentRollNos: List<String>, fromBatch: String, toBatch: String, reason: String): String? {
+        if (!canManageBatchTransfers()) return "Only admin can create transfer requests."
+        val source = fromBatch.trim()
+        val target = toBatch.trim()
+        val transferReason = reason.trim()
+        val normalizedRollNos = studentRollNos.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
+        if (source.isBlank() || target.isBlank()) return "Source and target batches are required."
+        if (source == target) return "Source and target batch cannot be the same."
+        if (transferReason.isBlank()) return "Transfer reason is required."
+        if (normalizedRollNos.isEmpty()) return "Select at least one student for transfer."
+        if (!attendanceBatches.contains(source) || !attendanceBatches.contains(target)) return "Invalid batch selection."
+
+        val sourceStudents = studentsByBatch[source].orEmpty()
+        val missing = normalizedRollNos.filter { roll -> sourceStudents.none { it.rollNo.equals(roll, ignoreCase = true) } }
+        if (missing.isNotEmpty()) return "Some selected students are not present in source batch."
+
+        batchTransferRequests.add(
+            0,
+            BatchTransferRequest(
+                id = nextTransferRequestId(),
+                studentRollNos = normalizedRollNos,
+                fromBatch = source,
+                toBatch = target,
+                reason = transferReason,
+                status = TransferStatus.Pending,
+                requestedBy = currentUser?.username ?: "admin",
+                requestedAt = nowLabel(),
+            )
+        )
+        return null
+    }
+
+    fun approveTransferRequest(requestId: Int): String? {
+        if (!canManageBatchTransfers()) return "Only admin can approve transfer requests."
+        val index = batchTransferRequests.indexOfFirst { it.id == requestId }
+        if (index < 0) return "Transfer request not found."
+        val request = batchTransferRequests[index]
+        if (request.status != TransferStatus.Pending) return "Only pending requests can be approved."
+
+        val sourceStudents = studentsByBatch[request.fromBatch].orEmpty().toMutableList()
+        val targetStudents = studentsByBatch[request.toBatch].orEmpty().toMutableList()
+
+        val missing = request.studentRollNos.filter { roll -> sourceStudents.none { it.rollNo.equals(roll, ignoreCase = true) } }
+        if (missing.isNotEmpty()) return "Some students are no longer available in source batch."
+
+        val approvedBy = currentUser?.username ?: "admin"
+        val approvedAt = nowLabel()
+
+        request.studentRollNos.forEach { roll ->
+            val sourceStudent = sourceStudents.first { it.rollNo.equals(roll, ignoreCase = true) }
+            sourceStudents.remove(sourceStudent)
+            val nextTargetId = (targetStudents.maxOfOrNull { it.id } ?: 0) + 1
+            targetStudents.add(sourceStudent.copy(id = nextTargetId, batch = request.toBatch))
+
+            batchTransferLogs.add(
+                0,
+                BatchTransferLog(
+                    id = nextTransferLogId(),
+                    studentRollNo = sourceStudent.rollNo,
+                    fromBatch = request.fromBatch,
+                    toBatch = request.toBatch,
+                    reason = request.reason,
+                    approvedBy = approvedBy,
+                    approvedAt = approvedAt,
+                )
+            )
+        }
+
+        studentsByBatch = studentsByBatch + mapOf(
+            request.fromBatch to sourceStudents,
+            request.toBatch to targetStudents,
+        )
+
+        if (activeRole == UserRole.Student && currentUser?.rollNo?.let { request.studentRollNos.contains(it.uppercase()) } == true) {
+            currentUser = currentUser?.copy(batch = request.toBatch)
+            selectedBatch = request.toBatch
+            selectedTimetableBatch = request.toBatch
+            selectedSubject = subjectsForBatch(request.toBatch).firstOrNull() ?: selectedSubject
+        }
+
+        batchTransferRequests[index] = request.copy(
+            status = TransferStatus.Approved,
+            approvedBy = approvedBy,
+            decidedAt = approvedAt,
+        )
+        return null
+    }
+
+    fun rejectTransferRequest(requestId: Int): String? {
+        if (!canManageBatchTransfers()) return "Only admin can reject transfer requests."
+        val index = batchTransferRequests.indexOfFirst { it.id == requestId }
+        if (index < 0) return "Transfer request not found."
+        val request = batchTransferRequests[index]
+        if (request.status != TransferStatus.Pending) return "Only pending requests can be rejected."
+        batchTransferRequests[index] = request.copy(
+            status = TransferStatus.Rejected,
+            approvedBy = currentUser?.username ?: "admin",
+            decidedAt = nowLabel(),
+        )
+        return null
     }
 
     fun dashboardMetrics(): List<DashboardMetric> {
@@ -297,14 +587,14 @@ object DemoRepository {
     fun attendanceBatches(): List<String> = attendanceBatches.toList()
 
     fun subjectsForBatch(batch: String): List<String> =
-        attendanceSubjectsByBatch[batch].orEmpty().ifEmpty { listOf("General") }
+        attendanceSubjectsByBatch[batch].orEmpty().map { it.name }.ifEmpty { listOf("General") }
 
     fun addAttendanceBatch(batch: String) {
         if (!canManageAttendanceMasterData()) return
         val normalized = batch.trim()
         if (normalized.isBlank() || attendanceBatches.contains(normalized)) return
         attendanceBatches.add(normalized)
-        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalized to listOf("General"))
+        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalized to listOf(BatchSubject("General")))
         studentsByBatch = studentsByBatch + (normalized to emptyList())
     }
 
@@ -316,9 +606,7 @@ object DemoRepository {
         if (!attendanceBatches.contains(normalizedBatch)) {
             addAttendanceBatch(normalizedBatch)
         }
-        val existing = attendanceSubjectsByBatch[normalizedBatch].orEmpty()
-        if (existing.contains(normalizedSubject)) return
-        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalizedBatch to (existing + normalizedSubject))
+        addManagedSubject(normalizedBatch, normalizedSubject, isElective = false)
     }
 
     fun addAttendanceStudent(batch: String, studentName: String, rollNo: String?) {
@@ -384,6 +672,12 @@ object DemoRepository {
             )
         }
     }
+
+    private fun nextTransferRequestId(): Int = (batchTransferRequests.maxOfOrNull { it.id } ?: 0) + 1
+
+    private fun nextTransferLogId(): Int = (batchTransferLogs.maxOfOrNull { it.id } ?: 0) + 1
+
+    private fun nowLabel(): String = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()).format(Date())
 
     private fun allStudentRecords(): List<StudentRecord> = studentsByBatch.values.flatten()
 
