@@ -37,11 +37,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -96,6 +98,13 @@ fun AttendanceScreen(repository: DemoRepository) {
     }
     var sessionNote by remember(currentSheet.id) { mutableStateOf("") }
     var saveMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(saveMessage) {
+        if (saveMessage.isNotBlank()) {
+            delay(5000L)
+            saveMessage = ""
+        }
+    }
 
     // Student view: subject drill-down state
     var selectedCourseForDetail by remember { mutableStateOf<String?>(null) }
