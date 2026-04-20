@@ -27,6 +27,34 @@ enum class WeekDay(val label: String) {
     Saturday("Saturday")
 }
 
+enum class AppLanguage(val label: String, val code: String) {
+    English("English", "en"),
+    Hindi("Hindi", "hi"),
+    Spanish("Spanish", "es"),
+    French("French", "fr")
+}
+
+enum class AppCurrency(val label: String, val code: String) {
+    INR("INR - Indian Rupee", "INR"),
+    USD("USD - US Dollar", "USD"),
+    EUR("EUR - Euro", "EUR"),
+    GBP("GBP - British Pound", "GBP")
+}
+
+enum class AppTimeZone(val label: String, val id: String) {
+    IST("IST (UTC +05:30)", "Asia/Kolkata"),
+    UTC("UTC (UTC +00:00)", "UTC"),
+    CET("CET (UTC +01:00)", "Europe/Paris"),
+    EST("EST (UTC -05:00)", "America/New_York")
+}
+
+data class UserLocalizationSettings(
+    val language: AppLanguage = AppLanguage.English,
+    val country: String = "India",
+    val currency: AppCurrency = AppCurrency.INR,
+    val timeZone: AppTimeZone = AppTimeZone.IST,
+)
+
 data class DashboardMetric(
     val title: String,
     val value: String,

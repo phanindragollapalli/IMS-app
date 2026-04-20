@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 object DemoRepository {
     var currentUser by mutableStateOf<SessionUser?>(null)
     var activeRole by mutableStateOf(UserRole.Admin)
+    var localizationSettings by mutableStateOf(UserLocalizationSettings())
     var searchQuery by mutableStateOf("")
     var selectedBatch by mutableStateOf("B.Tech CSE - Sem 4")
     var selectedDate by mutableStateOf("10 Apr 2026")
@@ -105,6 +106,10 @@ object DemoRepository {
                 selectedSubject = subjectsForBatch(it).firstOrNull() ?: selectedSubject
             }
         }
+    }
+
+    fun updateLocalizationSettings(settings: UserLocalizationSettings) {
+        localizationSettings = settings
     }
 
     fun dashboardMetrics(): List<DashboardMetric> {

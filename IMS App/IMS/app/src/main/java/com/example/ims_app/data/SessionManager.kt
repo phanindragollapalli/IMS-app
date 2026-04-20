@@ -55,6 +55,39 @@ class SessionManager(context: Context) {
         )
     }
 
+    fun saveUserLocalizationSettings(username: String, settings: UserLocalizationSettings) {
+        if (username.isBlank()) return
+        prefs.edit()
+            .putString(localizationKey(username, KEY_LOC_LANGUAGE), settings.language.code)
+            .putString(localizationKey(username, KEY_LOC_COUNTRY), settings.country)
+            .putString(localizationKey(username, KEY_LOC_CURRENCY), settings.currency.code)
+            .putString(localizationKey(username, KEY_LOC_TIME_ZONE), settings.timeZone.id)
+            .apply()
+    }
+
+    fun loadUserLocalizationSettings(username: String): UserLocalizationSettings {
+        val defaults = UserLocalizationSettings()
+        if (username.isBlank()) return defaults
+
+        val languageCode = prefs.getString(localizationKey(username, KEY_LOC_LANGUAGE), defaults.language.code)
+        val country = prefs.getString(localizationKey(username, KEY_LOC_COUNTRY), defaults.country)
+            .orEmpty()
+            .ifBlank { defaults.country }
+        val currencyCode = prefs.getString(localizationKey(username, KEY_LOC_CURRENCY), defaults.currency.code)
+        val timeZoneId = prefs.getString(localizationKey(username, KEY_LOC_TIME_ZONE), defaults.timeZone.id)
+
+        val language = AppLanguage.values().firstOrNull { it.code == languageCode } ?: defaults.language
+        val currency = AppCurrency.values().firstOrNull { it.code == currencyCode } ?: defaults.currency
+        val timeZone = AppTimeZone.values().firstOrNull { it.id == timeZoneId } ?: defaults.timeZone
+
+        return UserLocalizationSettings(
+            language = language,
+            country = country,
+            currency = currency,
+            timeZone = timeZone,
+        )
+    }
+
     private fun ensureSeedUsers() {
         if (!prefs.getString(KEY_USERS, null).isNullOrBlank()) return
         val seeded = listOf(
@@ -96,11 +129,20 @@ class SessionManager(context: Context) {
         }
     }
 
+    private fun localizationKey(username: String, key: String): String {
+        return "${KEY_LOCALIZATION_PREFIX}_${username.trim().lowercase()}_$key"
+    }
+
     companion object {
         private const val PREF_NAME = "ims_session"
         private const val KEY_LOGIN_TIME = "login_time"
         private const val KEY_SESSION_USERNAME = "session_username"
         private const val KEY_USERS = "users"
+        private const val KEY_LOCALIZATION_PREFIX = "localization"
+        private const val KEY_LOC_LANGUAGE = "language"
+        private const val KEY_LOC_COUNTRY = "country"
+        private const val KEY_LOC_CURRENCY = "currency"
+        private const val KEY_LOC_TIME_ZONE = "time_zone"
         private const val SESSION_DURATION_MS = 3L * 24L * 60L * 60L * 1000L
     }
 }

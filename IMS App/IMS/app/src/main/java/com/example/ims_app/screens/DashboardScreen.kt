@@ -18,18 +18,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ims_app.data.AppCurrency
+import com.example.ims_app.data.AppLanguage
+import com.example.ims_app.data.AppTimeZone
 import com.example.ims_app.data.DashboardMetric
 import com.example.ims_app.data.DemoRepository
+import com.example.ims_app.data.SessionManager
+import com.example.ims_app.data.UserLocalizationSettings
 import com.example.ims_app.data.UserRole
 
 @Composable
@@ -39,6 +54,15 @@ fun DashboardScreen(
     onNavigateToAttendance: () -> Unit,
 ) {
     val metrics = repository.dashboardMetrics()
+    val context = LocalContext.current
+    val sessionManager = remember(context) { SessionManager(context.applicationContext) }
+
+    val saveLocalizationSettings: (UserLocalizationSettings) -> Unit = { updated ->
+        repository.updateLocalizationSettings(updated)
+        repository.currentUser?.username?.let { username ->
+            sessionManager.saveUserLocalizationSettings(username, updated)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -108,6 +132,17 @@ fun DashboardScreen(
         }
 
         item {
+            SectionHeader(title = "Configuration", subtitle = "Language settings and basic configuration")
+        }
+
+        item {
+            LocalizationSettingsCard(
+                settings = repository.localizationSettings,
+                onSettingsChange = saveLocalizationSettings
+            )
+        }
+
+        item {
             SectionHeader(title = "Today", subtitle = "Operational snapshot")
         }
 
@@ -118,6 +153,99 @@ fun DashboardScreen(
         )) { note ->
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Text(note, modifier = Modifier.padding(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalizationSettingsCard(
+    settings: UserLocalizationSettings,
+    onSettingsChange: (UserLocalizationSettings) -> Unit,
+) {
+    ElevatedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Language and region", style = MaterialTheme.typography.labelLarge)
+
+            EnumDropdownField(
+                label = "Language",
+                selectedOption = settings.language,
+                options = AppLanguage.values().toList(),
+                optionLabel = { it.label },
+                onOptionSelected = { selected -> onSettingsChange(settings.copy(language = selected)) }
+            )
+
+            OutlinedTextField(
+                value = settings.country,
+                onValueChange = { country -> onSettingsChange(settings.copy(country = country)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Country") },
+                singleLine = true
+            )
+
+            EnumDropdownField(
+                label = "Currency",
+                selectedOption = settings.currency,
+                options = AppCurrency.values().toList(),
+                optionLabel = { it.label },
+                onOptionSelected = { selected -> onSettingsChange(settings.copy(currency = selected)) }
+            )
+
+            EnumDropdownField(
+                label = "Time zone",
+                selectedOption = settings.timeZone,
+                options = AppTimeZone.values().toList(),
+                optionLabel = { it.label },
+                onOptionSelected = { selected -> onSettingsChange(settings.copy(timeZone = selected)) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> EnumDropdownField(
+    label: String,
+    selectedOption: T,
+    options: List<T>,
+    optionLabel: (T) -> String,
+    onOptionSelected: (T) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = optionLabel(selectedOption),
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(option)) },
+                    onClick = {
+                        onOptionSelected(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }
