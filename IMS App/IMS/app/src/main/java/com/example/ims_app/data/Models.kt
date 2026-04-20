@@ -28,24 +28,15 @@ enum class WeekDay(val label: String) {
 }
 
 enum class AppLanguage(val label: String, val code: String) {
-    English("English", "en"),
-    Hindi("Hindi", "hi"),
-    Spanish("Spanish", "es"),
-    French("French", "fr")
+    English("English", "en")
 }
 
 enum class AppCurrency(val label: String, val code: String) {
-    INR("INR - Indian Rupee", "INR"),
-    USD("USD - US Dollar", "USD"),
-    EUR("EUR - Euro", "EUR"),
-    GBP("GBP - British Pound", "GBP")
+    INR("INR - Indian Rupee", "INR")
 }
 
 enum class AppTimeZone(val label: String, val id: String) {
-    IST("IST (UTC +05:30)", "Asia/Kolkata"),
-    UTC("UTC (UTC +00:00)", "UTC"),
-    CET("CET (UTC +01:00)", "Europe/Paris"),
-    EST("EST (UTC -05:00)", "America/New_York")
+    IST("IST (UTC +05:30)", "Asia/Kolkata")
 }
 
 data class UserLocalizationSettings(
@@ -92,25 +83,6 @@ data class Course(
 data class BatchSubject(
     val name: String,
     val isElective: Boolean = false,
-)
-
-enum class TransferStatus(val label: String) {
-    Pending("Pending"),
-    Approved("Approved"),
-    Rejected("Rejected")
-}
-
-data class BatchTransferRequest(
-    val id: Int,
-    val studentRollNos: List<String>,
-    val fromBatch: String,
-    val toBatch: String,
-    val reason: String,
-    val status: TransferStatus,
-    val requestedBy: String,
-    val requestedAt: String,
-    val approvedBy: String? = null,
-    val decidedAt: String? = null,
 )
 
 data class BatchTransferLog(

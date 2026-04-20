@@ -19,16 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -66,7 +59,7 @@ private enum class AttendanceMode {
 fun AttendanceScreen(repository: DemoRepository) {
     val role = repository.activeRole
     val canManageAttendance = repository.canManageAttendance()
-    val canManageMasterData = repository.canManageAttendanceMasterData()
+
     val currentSheet = repository.activeAttendanceSheet()
 
     var attendanceMode by remember { mutableStateOf(if (canManageAttendance) AttendanceMode.Mark else AttendanceMode.Reports) }
@@ -78,9 +71,6 @@ fun AttendanceScreen(repository: DemoRepository) {
     var reportDateFilter by remember { mutableStateOf<String?>(null) }
     var reportSubjectFilter by remember { mutableStateOf<String?>(null) }
 
-    var showAddBatchDialog by remember { mutableStateOf(false) }
-    var showAddSubjectDialog by remember { mutableStateOf(false) }
-    var showAddStudentDialog by remember { mutableStateOf(false) }
 
     val batchOptions = repository.attendanceBatches()
     val dateOptions = repository.attendanceDates().ifEmpty { listOf("10 Apr 2026", "11 Apr 2026", "12 Apr 2026") }
@@ -158,23 +148,7 @@ fun AttendanceScreen(repository: DemoRepository) {
                 ElevatedCard {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Manage attendance data", style = MaterialTheme.typography.labelLarge)
-
-                        // Only show add buttons for Faculty (not admin — admin has them in Admin Controls)
-                        if (canManageMasterData) {
-                            // Admin: buttons removed, note shown instead
-                            Text(
-                                "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else if (role == UserRole.Faculty) {
-                            Text(
-                                "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
+                        
                         Text("Select batch", style = MaterialTheme.typography.labelLarge)
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -389,47 +363,6 @@ fun AttendanceScreen(repository: DemoRepository) {
         }
     }
 
-    // Dialogs — only for Faculty now (admin uses Admin Controls)
-    if (role == UserRole.Faculty && canManageMasterData && showAddBatchDialog) {
-        AddBatchDialog(
-            onDismiss = { showAddBatchDialog = false },
-            onAdd = { batch ->
-                repository.addAttendanceBatch(batch)
-                repository.selectedBatch = batch
-                repository.selectedSubject = repository.subjectsForBatch(batch).firstOrNull() ?: repository.selectedSubject
-                showAddBatchDialog = false
-            }
-        )
-    }
-
-    if (role == UserRole.Faculty && canManageMasterData && showAddSubjectDialog) {
-        AddSubjectDialog(
-            selectedBatch = repository.selectedBatch,
-            batchOptions = repository.attendanceBatches(),
-            onDismiss = { showAddSubjectDialog = false },
-            onAdd = { batch, subject ->
-                repository.addAttendanceSubject(batch, subject)
-                repository.selectedBatch = batch
-                repository.selectedSubject = subject
-                showAddSubjectDialog = false
-            }
-        )
-    }
-
-    if (role == UserRole.Faculty && canManageMasterData && showAddStudentDialog) {
-        AddStudentDialog(
-            selectedBatch = repository.selectedBatch,
-            batchOptions = repository.attendanceBatches(),
-            autoGenerateRollNo = repository.generalSettings.autoUniqueStudentIds,
-            suggestedRollNo = repository.nextAutoStudentRollNo(),
-            onDismiss = { showAddStudentDialog = false },
-            onAdd = { batch, name, rollNo ->
-                repository.addAttendanceStudent(batch, name, rollNo)
-                repository.selectedBatch = batch
-                showAddStudentDialog = false
-            }
-        )
-    }
 }
 
 // ─── Student View ───────────────────────────────────────────────────────────────
@@ -764,147 +697,6 @@ private fun AttendanceRowInline(
                 )
             } else if (remark.isNotBlank()) {
                 Text("Remark: $remark", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-// ─── Dialogs ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun AddBatchDialog(
-    onDismiss: () -> Unit,
-    onAdd: (String) -> Unit,
-) {
-    var batchName by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val normalized = batchName.trim()
-                if (normalized.isNotBlank()) onAdd(normalized)
-            }) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add batch") },
-        text = {
-            OutlinedTextField(
-                value = batchName,
-                onValueChange = { batchName = it },
-                label = { Text("Batch name") },
-                singleLine = true
-            )
-        }
-    )
-}
-
-@Composable
-private fun AddSubjectDialog(
-    selectedBatch: String,
-    batchOptions: List<String>,
-    onDismiss: () -> Unit,
-    onAdd: (String, String) -> Unit,
-) {
-    var batchName by remember { mutableStateOf(selectedBatch) }
-    var subjectName by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val normalizedBatch = batchName.trim()
-                val normalizedSubject = subjectName.trim()
-                if (normalizedBatch.isNotBlank() && normalizedSubject.isNotBlank()) {
-                    onAdd(normalizedBatch, normalizedSubject)
-                }
-            }) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add subject") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BatchDropdownField("Batch", batchOptions, batchName) { batchName = it }
-                OutlinedTextField(value = subjectName, onValueChange = { subjectName = it }, label = { Text("Subject") }, singleLine = true)
-            }
-        }
-    )
-}
-
-@Composable
-private fun AddStudentDialog(
-    selectedBatch: String,
-    batchOptions: List<String>,
-    autoGenerateRollNo: Boolean,
-    suggestedRollNo: String,
-    onDismiss: () -> Unit,
-    onAdd: (String, String, String?) -> Unit,
-) {
-    var batchName by remember { mutableStateOf(selectedBatch) }
-    var studentName by remember { mutableStateOf("") }
-    var rollNo by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val normalizedBatch = batchName.trim()
-                val normalizedName = studentName.trim()
-                val normalizedRoll = rollNo.trim()
-                val canSubmit = normalizedBatch.isNotBlank() && normalizedName.isNotBlank() &&
-                    (autoGenerateRollNo || normalizedRoll.isNotBlank())
-                if (canSubmit) {
-                    onAdd(normalizedBatch, normalizedName, if (autoGenerateRollNo) null else normalizedRoll)
-                }
-            }) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add student") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BatchDropdownField("Batch", batchOptions, batchName) { batchName = it }
-                OutlinedTextField(value = studentName, onValueChange = { studentName = it }, label = { Text("Student name") }, singleLine = true)
-                if (autoGenerateRollNo) {
-                    OutlinedTextField(
-                        value = suggestedRollNo,
-                        onValueChange = {},
-                        label = { Text("Generated roll number") },
-                        singleLine = true,
-                        readOnly = true,
-                        enabled = false
-                    )
-                } else {
-                    OutlinedTextField(value = rollNo, onValueChange = { rollNo = it }, label = { Text("Roll number") }, singleLine = true)
-                }
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BatchDropdownField(
-    label: String,
-    options: List<String>,
-    selected: String,
-    onSelected: (String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
-            singleLine = true,
-        )
-
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                DropdownMenuItem(text = { Text(option) }, onClick = {
-                    onSelected(option)
-                    expanded = false
-                })
             }
         }
     }

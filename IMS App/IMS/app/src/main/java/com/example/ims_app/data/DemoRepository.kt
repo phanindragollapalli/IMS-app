@@ -75,7 +75,6 @@ object DemoRepository {
         Course(4, "BBA201", "Business Communication")
     )
 
-    private val batchTransferRequests = mutableStateListOf<BatchTransferRequest>()
     private val batchTransferLogs = mutableStateListOf<BatchTransferLog>()
 
     val timetableEntries = mutableStateListOf(
@@ -140,8 +139,6 @@ object DemoRepository {
         localizationSettings = settings
     }
 
-    fun canEditGradingSettings(): Boolean = activeRole == UserRole.Admin || activeRole == UserRole.Faculty
-
     fun canEditAdminOnlyGeneralSettings(): Boolean = activeRole == UserRole.Admin
 
     fun applyGeneralSettings(settings: GeneralSettings) {
@@ -172,8 +169,6 @@ object DemoRepository {
     fun managedSubjects(batch: String): List<BatchSubject> = attendanceSubjectsByBatch[batch].orEmpty()
 
     fun studentsForBatch(batch: String): List<StudentRecord> = studentsByBatch[batch].orEmpty().sortedBy { it.rollNo }
-
-    fun transferRequests(): List<BatchTransferRequest> = batchTransferRequests.toList().sortedByDescending { it.id }
 
     fun transferHistory(): List<BatchTransferLog> = batchTransferLogs.toList().sortedByDescending { it.id }
 
@@ -365,43 +360,7 @@ object DemoRepository {
         return null
     }
 
-    fun initiateSingleTransfer(studentRollNo: String, fromBatch: String, toBatch: String, reason: String): String? {
-        return initiateBulkTransfer(listOf(studentRollNo), fromBatch, toBatch, reason)
-    }
-
-    fun initiateBulkTransfer(studentRollNos: List<String>, fromBatch: String, toBatch: String, reason: String): String? {
-        if (!canManageBatchTransfers()) return "Only admin can create transfer requests."
-        val source = fromBatch.trim()
-        val target = toBatch.trim()
-        val transferReason = reason.trim()
-        val normalizedRollNos = studentRollNos.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
-        if (source.isBlank() || target.isBlank()) return "Source and target batches are required."
-        if (source == target) return "Source and target batch cannot be the same."
-        if (transferReason.isBlank()) return "Transfer reason is required."
-        if (normalizedRollNos.isEmpty()) return "Select at least one student for transfer."
-        if (!attendanceBatches.contains(source) || !attendanceBatches.contains(target)) return "Invalid batch selection."
-
-        val sourceStudents = studentsByBatch[source].orEmpty()
-        val missing = normalizedRollNos.filter { roll -> sourceStudents.none { it.rollNo.equals(roll, ignoreCase = true) } }
-        if (missing.isNotEmpty()) return "Some selected students are not present in source batch."
-
-        batchTransferRequests.add(
-            0,
-            BatchTransferRequest(
-                id = nextTransferRequestId(),
-                studentRollNos = normalizedRollNos,
-                fromBatch = source,
-                toBatch = target,
-                reason = transferReason,
-                status = TransferStatus.Pending,
-                requestedBy = currentUser?.username ?: "admin",
-                requestedAt = nowLabel(),
-            )
-        )
-        return null
-    }
-
-    /** Directly transfers students without a pending-request step. Admin-only. */
+    /** Directly transfers students. Admin-only. */
     fun executeTransfer(studentRollNos: List<String>, fromBatch: String, toBatch: String, reason: String): String? {
         if (!canManageBatchTransfers()) return "Only admin can transfer students."
         val source = fromBatch.trim()
@@ -448,75 +407,7 @@ object DemoRepository {
         return null
     }
 
-    fun approveTransferRequest(requestId: Int): String? {
-        if (!canManageBatchTransfers()) return "Only admin can approve transfer requests."
-        val index = batchTransferRequests.indexOfFirst { it.id == requestId }
-        if (index < 0) return "Transfer request not found."
-        val request = batchTransferRequests[index]
-        if (request.status != TransferStatus.Pending) return "Only pending requests can be approved."
 
-        val sourceStudents = studentsByBatch[request.fromBatch].orEmpty().toMutableList()
-        val targetStudents = studentsByBatch[request.toBatch].orEmpty().toMutableList()
-
-        val missing = request.studentRollNos.filter { roll -> sourceStudents.none { it.rollNo.equals(roll, ignoreCase = true) } }
-        if (missing.isNotEmpty()) return "Some students are no longer available in source batch."
-
-        val approvedBy = currentUser?.username ?: "admin"
-        val approvedAt = nowLabel()
-
-        request.studentRollNos.forEach { roll ->
-            val sourceStudent = sourceStudents.first { it.rollNo.equals(roll, ignoreCase = true) }
-            sourceStudents.remove(sourceStudent)
-            val nextTargetId = (targetStudents.maxOfOrNull { it.id } ?: 0) + 1
-            targetStudents.add(sourceStudent.copy(id = nextTargetId, batch = request.toBatch))
-
-            batchTransferLogs.add(
-                0,
-                BatchTransferLog(
-                    id = nextTransferLogId(),
-                    studentRollNo = sourceStudent.rollNo,
-                    fromBatch = request.fromBatch,
-                    toBatch = request.toBatch,
-                    reason = request.reason,
-                    approvedBy = approvedBy,
-                    approvedAt = approvedAt,
-                )
-            )
-        }
-
-        studentsByBatch = studentsByBatch + mapOf(
-            request.fromBatch to sourceStudents,
-            request.toBatch to targetStudents,
-        )
-
-        if (activeRole == UserRole.Student && currentUser?.rollNo?.let { request.studentRollNos.contains(it.uppercase()) } == true) {
-            currentUser = currentUser?.copy(batch = request.toBatch)
-            selectedBatch = request.toBatch
-            selectedTimetableBatch = request.toBatch
-            selectedSubject = subjectsForBatch(request.toBatch).firstOrNull() ?: selectedSubject
-        }
-
-        batchTransferRequests[index] = request.copy(
-            status = TransferStatus.Approved,
-            approvedBy = approvedBy,
-            decidedAt = approvedAt,
-        )
-        return null
-    }
-
-    fun rejectTransferRequest(requestId: Int): String? {
-        if (!canManageBatchTransfers()) return "Only admin can reject transfer requests."
-        val index = batchTransferRequests.indexOfFirst { it.id == requestId }
-        if (index < 0) return "Transfer request not found."
-        val request = batchTransferRequests[index]
-        if (request.status != TransferStatus.Pending) return "Only pending requests can be rejected."
-        batchTransferRequests[index] = request.copy(
-            status = TransferStatus.Rejected,
-            approvedBy = currentUser?.username ?: "admin",
-            decidedAt = nowLabel(),
-        )
-        return null
-    }
 
     fun dashboardMetrics(): List<DashboardMetric> {
         val timetableCount = visibleTimetableEntries().size
@@ -531,7 +422,7 @@ object DemoRepository {
 
     fun canManageAttendance(): Boolean = activeRole == UserRole.Admin || activeRole == UserRole.Faculty
 
-    fun canManageAttendanceMasterData(): Boolean = activeRole == UserRole.Admin
+
 
     fun canManageTimetable(): Boolean = activeRole == UserRole.Admin || activeRole == UserRole.Faculty
 
@@ -558,8 +449,6 @@ object DemoRepository {
             UserRole.Student -> false
         }
     }
-
-    fun canDuplicateTimetableEntry(entry: TimetableEntry): Boolean = canEditTimetableEntry(entry)
 
     fun saveTimetableEntry(entry: TimetableEntry): String? {
         if (!canManageTimetable()) return "You do not have permission to modify timetable entries."
@@ -709,53 +598,6 @@ object DemoRepository {
     fun subjectsForBatch(batch: String): List<String> =
         attendanceSubjectsByBatch[batch].orEmpty().map { it.name }.ifEmpty { listOf("General") }
 
-    fun addAttendanceBatch(batch: String) {
-        if (!canManageAttendanceMasterData()) return
-        val normalized = batch.trim()
-        if (normalized.isBlank() || attendanceBatches.contains(normalized)) return
-        attendanceBatches.add(normalized)
-        attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalized to listOf(BatchSubject("General")))
-        studentsByBatch = studentsByBatch + (normalized to emptyList())
-    }
-
-    fun addAttendanceSubject(batch: String, subject: String) {
-        if (!canManageAttendanceMasterData()) return
-        val normalizedBatch = batch.trim()
-        val normalizedSubject = subject.trim()
-        if (normalizedBatch.isBlank() || normalizedSubject.isBlank()) return
-        if (!attendanceBatches.contains(normalizedBatch)) {
-            addAttendanceBatch(normalizedBatch)
-        }
-        addManagedSubject(normalizedBatch, normalizedSubject, isElective = false)
-    }
-
-    fun addAttendanceStudent(batch: String, studentName: String, rollNo: String?) {
-        if (!canManageAttendanceMasterData()) return
-        val normalizedBatch = batch.trim()
-        val normalizedName = studentName.trim()
-        val manualRollNo = rollNo?.trim().orEmpty()
-        val normalizedRollNo = if (generalSettings.autoUniqueStudentIds) {
-            nextAutoStudentRollNo()
-        } else {
-            manualRollNo.uppercase()
-        }
-        if (normalizedBatch.isBlank() || normalizedName.isBlank() || normalizedRollNo.isBlank()) return
-        if (!attendanceBatches.contains(normalizedBatch)) {
-            addAttendanceBatch(normalizedBatch)
-        }
-        val existingRecords = allStudentRecords()
-        if (existingRecords.any { it.rollNo.equals(normalizedRollNo, ignoreCase = true) }) return
-        val existing = studentsByBatch[normalizedBatch].orEmpty()
-        val nextId = (existing.maxOfOrNull { it.id } ?: 0) + 1
-        val updated = existing + StudentRecord(nextId, normalizedName, normalizedRollNo, normalizedBatch)
-        studentsByBatch = studentsByBatch + (normalizedBatch to updated)
-    }
-
-    fun nextAutoStudentRollNo(): String {
-        val nextNumeric = (allStudentRecords().mapNotNull { it.rollNo.toIntOrNull() }.maxOrNull() ?: 0) + 1
-        return nextNumeric.toString().padStart(4, '0')
-    }
-
     fun attendanceReportSummary(sheets: List<AttendanceSheet>): AttendanceReportSummary {
         val entries = sheets.flatMap { sheet ->
             if (activeRole == UserRole.Student) {
@@ -793,7 +635,7 @@ object DemoRepository {
         }
     }
 
-    private fun nextTransferRequestId(): Int = (batchTransferRequests.maxOfOrNull { it.id } ?: 0) + 1
+
 
     private fun nextTransferLogId(): Int = (batchTransferLogs.maxOfOrNull { it.id } ?: 0) + 1
 
