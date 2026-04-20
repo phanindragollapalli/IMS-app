@@ -379,6 +379,8 @@ fun AttendanceScreen(repository: DemoRepository) {
         AddStudentDialog(
             selectedBatch = repository.selectedBatch,
             batchOptions = repository.attendanceBatches(),
+            autoGenerateRollNo = repository.generalSettings.autoUniqueStudentIds,
+            suggestedRollNo = repository.nextAutoStudentRollNo(),
             onDismiss = { showAddStudentDialog = false },
             onAdd = { batch, name, rollNo ->
                 repository.addAttendanceStudent(batch, name, rollNo)
@@ -486,8 +488,10 @@ private fun AddSubjectDialog(
 private fun AddStudentDialog(
     selectedBatch: String,
     batchOptions: List<String>,
+    autoGenerateRollNo: Boolean,
+    suggestedRollNo: String,
     onDismiss: () -> Unit,
-    onAdd: (String, String, String) -> Unit,
+    onAdd: (String, String, String?) -> Unit,
 ) {
     var batchName by remember { mutableStateOf(selectedBatch) }
     var studentName by remember { mutableStateOf("") }
@@ -499,8 +503,10 @@ private fun AddStudentDialog(
                 val normalizedBatch = batchName.trim()
                 val normalizedName = studentName.trim()
                 val normalizedRoll = rollNo.trim()
-                if (normalizedBatch.isNotBlank() && normalizedName.isNotBlank() && normalizedRoll.isNotBlank()) {
-                    onAdd(normalizedBatch, normalizedName, normalizedRoll)
+                val canSubmit = normalizedBatch.isNotBlank() && normalizedName.isNotBlank() &&
+                    (autoGenerateRollNo || normalizedRoll.isNotBlank())
+                if (canSubmit) {
+                    onAdd(normalizedBatch, normalizedName, if (autoGenerateRollNo) null else normalizedRoll)
                 }
             }) { Text("Add") }
         },
@@ -510,7 +516,18 @@ private fun AddStudentDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BatchDropdownField("Batch", batchOptions, batchName) { batchName = it }
                 OutlinedTextField(value = studentName, onValueChange = { studentName = it }, label = { Text("Student name") }, singleLine = true)
-                OutlinedTextField(value = rollNo, onValueChange = { rollNo = it }, label = { Text("Roll number") }, singleLine = true)
+                if (autoGenerateRollNo) {
+                    OutlinedTextField(
+                        value = suggestedRollNo,
+                        onValueChange = {},
+                        label = { Text("Generated roll number") },
+                        singleLine = true,
+                        readOnly = true,
+                        enabled = false
+                    )
+                } else {
+                    OutlinedTextField(value = rollNo, onValueChange = { rollNo = it }, label = { Text("Roll number") }, singleLine = true)
+                }
             }
         }
     )

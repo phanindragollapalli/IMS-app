@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
                         ?.let { sessionManager.loadUserLocalizationSettings(it) }
                         ?: UserLocalizationSettings()
                     DemoRepository.updateLocalizationSettings(settings)
+                    DemoRepository.applyGeneralSettings(sessionManager.loadGeneralSettings())
                 }
 
                 if (currentUser != null) {

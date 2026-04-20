@@ -27,6 +27,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,7 +44,10 @@ import com.example.ims_app.data.AppLanguage
 import com.example.ims_app.data.AppTimeZone
 import com.example.ims_app.data.DashboardMetric
 import com.example.ims_app.data.DemoRepository
+import com.example.ims_app.data.GeneralSettings
+import com.example.ims_app.data.GradingSystem
 import com.example.ims_app.data.SessionManager
+import com.example.ims_app.data.TermType
 import com.example.ims_app.data.UserLocalizationSettings
 import com.example.ims_app.data.UserRole
 
@@ -62,6 +66,11 @@ fun DashboardScreen(
         repository.currentUser?.username?.let { username ->
             sessionManager.saveUserLocalizationSettings(username, updated)
         }
+    }
+
+    val saveGeneralSettings: (GeneralSettings) -> Unit = { updated ->
+        repository.updateGeneralSettings(updated)
+        sessionManager.saveGeneralSettings(repository.generalSettings)
     }
 
     LazyColumn(
@@ -143,6 +152,15 @@ fun DashboardScreen(
         }
 
         item {
+            GeneralSettingsCard(
+                settings = repository.generalSettings,
+                canEditGrading = repository.canEditGradingSettings(),
+                canEditAdminOnly = repository.canEditAdminOnlyGeneralSettings(),
+                onSettingsChange = saveGeneralSettings
+            )
+        }
+
+        item {
             SectionHeader(title = "Today", subtitle = "Operational snapshot")
         }
 
@@ -207,6 +225,150 @@ private fun LocalizationSettingsCard(
     }
 }
 
+@Composable
+private fun GeneralSettingsCard(
+    settings: GeneralSettings,
+    canEditGrading: Boolean,
+    canEditAdminOnly: Boolean,
+    onSettingsChange: (GeneralSettings) -> Unit,
+) {
+    ElevatedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("General settings", style = MaterialTheme.typography.labelLarge)
+
+            EnumDropdownField(
+                label = "Grading system",
+                selectedOption = settings.gradingSystem,
+                options = GradingSystem.values().toList(),
+                optionLabel = { it.label },
+                onOptionSelected = { selected -> onSettingsChange(settings.copy(gradingSystem = selected)) },
+                enabled = canEditGrading,
+            )
+
+            IntegerSettingField(
+                label = "Pass mark threshold (%)",
+                value = settings.passMarkThreshold,
+                enabled = canEditGrading,
+                onValueChanged = { updated -> onSettingsChange(settings.copy(passMarkThreshold = updated)) }
+            )
+
+            if (settings.gradingSystem == GradingSystem.LetterGrade) {
+                Text("Grade scale boundaries (minimum marks)", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    IntegerSettingField(
+                        label = "A >=",
+                        value = settings.gradeScale.minA,
+                        enabled = canEditGrading,
+                        modifier = Modifier.weight(1f),
+                        onValueChanged = { updated ->
+                            onSettingsChange(settings.copy(gradeScale = settings.gradeScale.copy(minA = updated)))
+                        }
+                    )
+                    IntegerSettingField(
+                        label = "B >=",
+                        value = settings.gradeScale.minB,
+                        enabled = canEditGrading,
+                        modifier = Modifier.weight(1f),
+                        onValueChanged = { updated ->
+                            onSettingsChange(settings.copy(gradeScale = settings.gradeScale.copy(minB = updated)))
+                        }
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    IntegerSettingField(
+                        label = "C >=",
+                        value = settings.gradeScale.minC,
+                        enabled = canEditGrading,
+                        modifier = Modifier.weight(1f),
+                        onValueChanged = { updated ->
+                            onSettingsChange(settings.copy(gradeScale = settings.gradeScale.copy(minC = updated)))
+                        }
+                    )
+                    IntegerSettingField(
+                        label = "D >=",
+                        value = settings.gradeScale.minD,
+                        enabled = canEditGrading,
+                        modifier = Modifier.weight(1f),
+                        onValueChanged = { updated ->
+                            onSettingsChange(settings.copy(gradeScale = settings.gradeScale.copy(minD = updated)))
+                        }
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Automatic unique student IDs", style = MaterialTheme.typography.bodyMedium)
+                    Text("Generate numeric IDs like 0001, 0002", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(
+                    checked = settings.autoUniqueStudentIds,
+                    onCheckedChange = if (canEditAdminOnly) {
+                        { enabled -> onSettingsChange(settings.copy(autoUniqueStudentIds = enabled)) }
+                    } else {
+                        null
+                    },
+                    enabled = canEditAdminOnly
+                )
+            }
+
+            EnumDropdownField(
+                label = "Term type",
+                selectedOption = settings.termType,
+                options = TermType.values().toList(),
+                optionLabel = { it.label },
+                onOptionSelected = { selected -> onSettingsChange(settings.copy(termType = selected)) },
+                enabled = canEditAdminOnly,
+            )
+
+            IntegerSettingField(
+                label = "Default attendance threshold (%)",
+                value = settings.defaultAttendanceThreshold,
+                enabled = canEditAdminOnly,
+                onValueChanged = { updated -> onSettingsChange(settings.copy(defaultAttendanceThreshold = updated)) }
+            )
+
+            if (!canEditAdminOnly) {
+                Text(
+                    "Only admin can edit auto IDs, term type, and attendance threshold.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntegerSettingField(
+    label: String,
+    value: Int,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onValueChanged: (Int) -> Unit,
+) {
+    OutlinedTextField(
+        value = value.toString(),
+        onValueChange = { typed ->
+            typed.toIntOrNull()?.let(onValueChanged)
+        },
+        modifier = modifier.fillMaxWidth(),
+        label = { Text(label) },
+        singleLine = true,
+        enabled = enabled
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun <T> EnumDropdownField(
@@ -215,17 +377,23 @@ private fun <T> EnumDropdownField(
     options: List<T>,
     optionLabel: (T) -> String,
     onOptionSelected: (T) -> Unit,
+    enabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = it }
+        onExpandedChange = {
+            if (enabled) {
+                expanded = it
+            }
+        }
     ) {
         OutlinedTextField(
             value = optionLabel(selectedOption),
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             modifier = Modifier
                 .menuAnchor()
                 .fillMaxWidth(),

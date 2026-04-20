@@ -55,6 +55,34 @@ data class UserLocalizationSettings(
     val timeZone: AppTimeZone = AppTimeZone.IST,
 )
 
+enum class GradingSystem(val label: String) {
+    LetterGrade("Letter Grade"),
+    Percentage("Percentage"),
+    GPA("GPA (10-point)")
+}
+
+enum class TermType(val label: String) {
+    Semester("Semester"),
+    Trimester("Trimester"),
+    Annual("Annual")
+}
+
+data class GradeScaleBand(
+    val minA: Int = 85,
+    val minB: Int = 70,
+    val minC: Int = 55,
+    val minD: Int = 40,
+)
+
+data class GeneralSettings(
+    val gradingSystem: GradingSystem = GradingSystem.LetterGrade,
+    val passMarkThreshold: Int = 40,
+    val gradeScale: GradeScaleBand = GradeScaleBand(),
+    val autoUniqueStudentIds: Boolean = false,
+    val termType: TermType = TermType.Semester,
+    val defaultAttendanceThreshold: Int = 75,
+)
+
 data class DashboardMetric(
     val title: String,
     val value: String,

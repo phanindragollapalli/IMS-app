@@ -9,6 +9,7 @@ object DemoRepository {
     var currentUser by mutableStateOf<SessionUser?>(null)
     var activeRole by mutableStateOf(UserRole.Admin)
     var localizationSettings by mutableStateOf(UserLocalizationSettings())
+    var generalSettings by mutableStateOf(GeneralSettings())
     var searchQuery by mutableStateOf("")
     var selectedBatch by mutableStateOf("B.Tech CSE - Sem 4")
     var selectedDate by mutableStateOf("10 Apr 2026")
@@ -110,6 +111,27 @@ object DemoRepository {
 
     fun updateLocalizationSettings(settings: UserLocalizationSettings) {
         localizationSettings = settings
+    }
+
+    fun canEditGradingSettings(): Boolean = activeRole == UserRole.Admin || activeRole == UserRole.Faculty
+
+    fun canEditAdminOnlyGeneralSettings(): Boolean = activeRole == UserRole.Admin
+
+    fun applyGeneralSettings(settings: GeneralSettings) {
+        generalSettings = sanitizeGeneralSettings(settings)
+    }
+
+    fun updateGeneralSettings(settings: GeneralSettings) {
+        val sanitized = sanitizeGeneralSettings(settings)
+        generalSettings = when {
+            activeRole == UserRole.Admin -> sanitized
+            activeRole == UserRole.Faculty -> sanitized.copy(
+                autoUniqueStudentIds = generalSettings.autoUniqueStudentIds,
+                termType = generalSettings.termType,
+                defaultAttendanceThreshold = generalSettings.defaultAttendanceThreshold,
+            )
+            else -> generalSettings
+        }
     }
 
     fun dashboardMetrics(): List<DashboardMetric> {
@@ -299,20 +321,31 @@ object DemoRepository {
         attendanceSubjectsByBatch = attendanceSubjectsByBatch + (normalizedBatch to (existing + normalizedSubject))
     }
 
-    fun addAttendanceStudent(batch: String, studentName: String, rollNo: String) {
+    fun addAttendanceStudent(batch: String, studentName: String, rollNo: String?) {
         if (!canManageAttendanceMasterData()) return
         val normalizedBatch = batch.trim()
         val normalizedName = studentName.trim()
-        val normalizedRollNo = rollNo.trim().uppercase()
+        val manualRollNo = rollNo?.trim().orEmpty()
+        val normalizedRollNo = if (generalSettings.autoUniqueStudentIds) {
+            nextAutoStudentRollNo()
+        } else {
+            manualRollNo.uppercase()
+        }
         if (normalizedBatch.isBlank() || normalizedName.isBlank() || normalizedRollNo.isBlank()) return
         if (!attendanceBatches.contains(normalizedBatch)) {
             addAttendanceBatch(normalizedBatch)
         }
+        val existingRecords = allStudentRecords()
+        if (existingRecords.any { it.rollNo.equals(normalizedRollNo, ignoreCase = true) }) return
         val existing = studentsByBatch[normalizedBatch].orEmpty()
-        if (existing.any { it.rollNo == normalizedRollNo }) return
         val nextId = (existing.maxOfOrNull { it.id } ?: 0) + 1
         val updated = existing + StudentRecord(nextId, normalizedName, normalizedRollNo, normalizedBatch)
         studentsByBatch = studentsByBatch + (normalizedBatch to updated)
+    }
+
+    fun nextAutoStudentRollNo(): String {
+        val nextNumeric = (allStudentRecords().mapNotNull { it.rollNo.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        return nextNumeric.toString().padStart(4, '0')
     }
 
     fun attendanceReportSummary(sheets: List<AttendanceSheet>): AttendanceReportSummary {
@@ -350,5 +383,25 @@ object DemoRepository {
                 remark = ""
             )
         }
+    }
+
+    private fun allStudentRecords(): List<StudentRecord> = studentsByBatch.values.flatten()
+
+    private fun sanitizeGeneralSettings(settings: GeneralSettings): GeneralSettings {
+        val minA = settings.gradeScale.minA.coerceIn(0, 100)
+        val minB = settings.gradeScale.minB.coerceIn(0, minA)
+        val minC = settings.gradeScale.minC.coerceIn(0, minB)
+        val minD = settings.gradeScale.minD.coerceIn(0, minC)
+        val passMark = settings.passMarkThreshold.coerceIn(0, minD)
+        return settings.copy(
+            passMarkThreshold = passMark,
+            gradeScale = GradeScaleBand(
+                minA = minA,
+                minB = minB,
+                minC = minC,
+                minD = minD,
+            ),
+            defaultAttendanceThreshold = settings.defaultAttendanceThreshold.coerceIn(0, 100),
+        )
     }
 }

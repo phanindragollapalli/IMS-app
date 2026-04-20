@@ -88,6 +88,45 @@ class SessionManager(context: Context) {
         )
     }
 
+    fun saveGeneralSettings(settings: GeneralSettings) {
+        prefs.edit()
+            .putString(KEY_GENERAL_GRADING_SYSTEM, settings.gradingSystem.name)
+            .putInt(KEY_GENERAL_PASS_MARK, settings.passMarkThreshold)
+            .putInt(KEY_GENERAL_GRADE_MIN_A, settings.gradeScale.minA)
+            .putInt(KEY_GENERAL_GRADE_MIN_B, settings.gradeScale.minB)
+            .putInt(KEY_GENERAL_GRADE_MIN_C, settings.gradeScale.minC)
+            .putInt(KEY_GENERAL_GRADE_MIN_D, settings.gradeScale.minD)
+            .putBoolean(KEY_GENERAL_AUTO_UNIQUE_IDS, settings.autoUniqueStudentIds)
+            .putString(KEY_GENERAL_TERM_TYPE, settings.termType.name)
+            .putInt(KEY_GENERAL_ATTENDANCE_THRESHOLD, settings.defaultAttendanceThreshold)
+            .apply()
+    }
+
+    fun loadGeneralSettings(): GeneralSettings {
+        val defaults = GeneralSettings()
+        val gradingSystem = runCatching {
+            GradingSystem.valueOf(prefs.getString(KEY_GENERAL_GRADING_SYSTEM, defaults.gradingSystem.name).orEmpty())
+        }.getOrDefault(defaults.gradingSystem)
+
+        val termType = runCatching {
+            TermType.valueOf(prefs.getString(KEY_GENERAL_TERM_TYPE, defaults.termType.name).orEmpty())
+        }.getOrDefault(defaults.termType)
+
+        return GeneralSettings(
+            gradingSystem = gradingSystem,
+            passMarkThreshold = prefs.getInt(KEY_GENERAL_PASS_MARK, defaults.passMarkThreshold),
+            gradeScale = GradeScaleBand(
+                minA = prefs.getInt(KEY_GENERAL_GRADE_MIN_A, defaults.gradeScale.minA),
+                minB = prefs.getInt(KEY_GENERAL_GRADE_MIN_B, defaults.gradeScale.minB),
+                minC = prefs.getInt(KEY_GENERAL_GRADE_MIN_C, defaults.gradeScale.minC),
+                minD = prefs.getInt(KEY_GENERAL_GRADE_MIN_D, defaults.gradeScale.minD),
+            ),
+            autoUniqueStudentIds = prefs.getBoolean(KEY_GENERAL_AUTO_UNIQUE_IDS, defaults.autoUniqueStudentIds),
+            termType = termType,
+            defaultAttendanceThreshold = prefs.getInt(KEY_GENERAL_ATTENDANCE_THRESHOLD, defaults.defaultAttendanceThreshold),
+        )
+    }
+
     private fun ensureSeedUsers() {
         if (!prefs.getString(KEY_USERS, null).isNullOrBlank()) return
         val seeded = listOf(
@@ -143,6 +182,15 @@ class SessionManager(context: Context) {
         private const val KEY_LOC_COUNTRY = "country"
         private const val KEY_LOC_CURRENCY = "currency"
         private const val KEY_LOC_TIME_ZONE = "time_zone"
+        private const val KEY_GENERAL_GRADING_SYSTEM = "general_grading_system"
+        private const val KEY_GENERAL_PASS_MARK = "general_pass_mark"
+        private const val KEY_GENERAL_GRADE_MIN_A = "general_grade_min_a"
+        private const val KEY_GENERAL_GRADE_MIN_B = "general_grade_min_b"
+        private const val KEY_GENERAL_GRADE_MIN_C = "general_grade_min_c"
+        private const val KEY_GENERAL_GRADE_MIN_D = "general_grade_min_d"
+        private const val KEY_GENERAL_AUTO_UNIQUE_IDS = "general_auto_unique_ids"
+        private const val KEY_GENERAL_TERM_TYPE = "general_term_type"
+        private const val KEY_GENERAL_ATTENDANCE_THRESHOLD = "general_attendance_threshold"
         private const val SESSION_DURATION_MS = 3L * 24L * 60L * 60L * 1000L
     }
 }
