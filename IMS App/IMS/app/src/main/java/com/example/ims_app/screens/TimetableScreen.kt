@@ -262,12 +262,12 @@ private fun WeeklyTimetableBoard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "Weekly timetable (drag cards between slots)",
+                "Weekly timetable",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                "Long press and drag a class card to another day/time slot.",
+                if(userRole == UserRole.Student) "" else "Long press and drag a class card to another day/time slot.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

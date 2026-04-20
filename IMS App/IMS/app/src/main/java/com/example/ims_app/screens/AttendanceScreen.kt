@@ -1,19 +1,28 @@
 package com.example.ims_app.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
@@ -21,6 +30,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,11 +42,15 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.ims_app.data.AttendanceEntry
 import com.example.ims_app.data.AttendanceReportType
+import com.example.ims_app.data.AttendanceSheet
 import com.example.ims_app.data.AttendanceStatus
 import com.example.ims_app.data.DemoRepository
 import com.example.ims_app.data.UserRole
@@ -80,6 +95,20 @@ fun AttendanceScreen(repository: DemoRepository) {
         }
     }
     var sessionNote by remember(currentSheet.id) { mutableStateOf("") }
+    var saveMessage by remember { mutableStateOf("") }
+
+    // Student view: subject drill-down state
+    var selectedCourseForDetail by remember { mutableStateOf<String?>(null) }
+
+    if (role == UserRole.Student) {
+        StudentAttendanceView(
+            repository = repository,
+            selectedCourseForDetail = selectedCourseForDetail,
+            onSelectCourse = { selectedCourseForDetail = it },
+            onBack = { selectedCourseForDetail = null }
+        )
+        return
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -90,9 +119,9 @@ fun AttendanceScreen(repository: DemoRepository) {
             Text("Attendance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
                 when (role) {
-                    UserRole.Student -> "View your personal attendance reports by filter."
                     UserRole.Faculty -> "Mark attendance with optional remarks and generate reports."
                     UserRole.Admin -> "Full attendance control with reports and data management."
+                    else -> ""
                 },
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -120,18 +149,18 @@ fun AttendanceScreen(repository: DemoRepository) {
                 ElevatedCard {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Manage attendance data", style = MaterialTheme.typography.labelLarge)
+
+                        // Only show add buttons for Faculty (not admin — admin has them in Admin Controls)
                         if (canManageMasterData) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(onClick = { showAddBatchDialog = true }) { Text("Add batch") }
-                                Button(onClick = { showAddSubjectDialog = true }) { Text("Add subject") }
-                                Button(onClick = { showAddStudentDialog = true }) { Text("Add student") }
-                            }
-                        } else {
+                            // Admin: buttons removed, note shown instead
                             Text(
-                                "Only admin can add batches, subjects, and students.",
+                                "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (role == UserRole.Faculty) {
+                            Text(
+                                "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -202,11 +231,10 @@ fun AttendanceScreen(repository: DemoRepository) {
             }
 
             items(currentSheet.entries) { entry ->
-                AttendanceRow(
+                AttendanceRowInline(
                     entry = entry,
                     selectedStatus = selectedStatuses[entry.id] ?: entry.status,
                     remark = selectedRemarks[entry.id] ?: entry.remark,
-                    editable = true,
                     onStatusChange = { selectedStatuses[entry.id] = it },
                     onRemarkChange = { selectedRemarks[entry.id] = it }
                 )
@@ -225,10 +253,26 @@ fun AttendanceScreen(repository: DemoRepository) {
                                 }
                             )
                         )
+                        saveMessage = "Attendance updated"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Save attendance")
+                }
+            }
+
+            if (saveMessage.isNotBlank()) {
+                item {
+                    ElevatedCard {
+                        Text(
+                            saveMessage,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         } else {
@@ -249,18 +293,14 @@ fun AttendanceScreen(repository: DemoRepository) {
                             }
                         }
 
-                        if (role == UserRole.Student) {
-                            Text("Batch: ${repository.currentUser?.batch ?: "Not assigned"}", style = MaterialTheme.typography.labelLarge)
-                        } else {
-                            Text("Filter batch", style = MaterialTheme.typography.labelLarge)
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                FilterChip(selected = reportBatchFilter == null, onClick = { reportBatchFilter = null }, label = { Text("All") })
-                                batchOptions.forEach { batch ->
-                                    FilterChip(selected = reportBatchFilter == batch, onClick = { reportBatchFilter = batch }, label = { Text(batch) })
-                                }
+                        Text("Filter batch", style = MaterialTheme.typography.labelLarge)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(selected = reportBatchFilter == null, onClick = { reportBatchFilter = null }, label = { Text("All") })
+                            batchOptions.forEach { batch ->
+                                FilterChip(selected = reportBatchFilter == batch, onClick = { reportBatchFilter = batch }, label = { Text(batch) })
                             }
                         }
 
@@ -298,35 +338,26 @@ fun AttendanceScreen(repository: DemoRepository) {
 
             val reportSheets = repository.attendanceSheetsFor(
                 reportType = reportType,
-                batch = if (role == UserRole.Student) repository.currentUser?.batch else reportBatchFilter,
+                batch = reportBatchFilter,
                 dateLabel = if (reportType == AttendanceReportType.Daily) reportDateFilter else null,
                 monthLabel = if (reportType == AttendanceReportType.Monthly) selectedMonth else null,
                 subject = if (reportType == AttendanceReportType.SubjectWise) reportSubjectFilter else null,
             )
 
             items(reportSheets) { sheet ->
-                val reportEntries = if (role == UserRole.Student) {
-                    val myRoll = repository.currentUser?.rollNo
-                    sheet.entries.filter { it.rollNo == myRoll }
-                } else {
-                    sheet.entries
-                }
-
-                if (reportEntries.isNotEmpty()) {
-                    ElevatedCard {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(sheet.subject, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("${sheet.batch} • ${sheet.dateLabel}")
-                            reportEntries.forEach { entry ->
-                                AttendanceRow(
-                                    entry = entry,
-                                    selectedStatus = entry.status,
-                                    remark = entry.remark,
-                                    editable = false,
-                                    onStatusChange = {},
-                                    onRemarkChange = {}
-                                )
-                            }
+                ElevatedCard {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(sheet.subject, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("${sheet.batch} • ${sheet.dateLabel}")
+                        sheet.entries.forEach { entry ->
+                            AttendanceRowInline(
+                                entry = entry,
+                                selectedStatus = entry.status,
+                                remark = entry.remark,
+                                onStatusChange = {},
+                                onRemarkChange = {},
+                                readOnly = true,
+                            )
                         }
                     }
                 }
@@ -349,7 +380,8 @@ fun AttendanceScreen(repository: DemoRepository) {
         }
     }
 
-    if (canManageMasterData && showAddBatchDialog) {
+    // Dialogs — only for Faculty now (admin uses Admin Controls)
+    if (role == UserRole.Faculty && canManageMasterData && showAddBatchDialog) {
         AddBatchDialog(
             onDismiss = { showAddBatchDialog = false },
             onAdd = { batch ->
@@ -361,7 +393,7 @@ fun AttendanceScreen(repository: DemoRepository) {
         )
     }
 
-    if (canManageMasterData && showAddSubjectDialog) {
+    if (role == UserRole.Faculty && canManageMasterData && showAddSubjectDialog) {
         AddSubjectDialog(
             selectedBatch = repository.selectedBatch,
             batchOptions = repository.attendanceBatches(),
@@ -375,7 +407,7 @@ fun AttendanceScreen(repository: DemoRepository) {
         )
     }
 
-    if (canManageMasterData && showAddStudentDialog) {
+    if (role == UserRole.Faculty && canManageMasterData && showAddStudentDialog) {
         AddStudentDialog(
             selectedBatch = repository.selectedBatch,
             batchOptions = repository.attendanceBatches(),
@@ -391,40 +423,344 @@ fun AttendanceScreen(repository: DemoRepository) {
     }
 }
 
+// ─── Student View ───────────────────────────────────────────────────────────────
+
 @Composable
-private fun AttendanceRow(
-    entry: AttendanceEntry,
-    selectedStatus: AttendanceStatus,
-    remark: String,
-    editable: Boolean,
-    onStatusChange: (AttendanceStatus) -> Unit,
-    onRemarkChange: (String) -> Unit,
+private fun StudentAttendanceView(
+    repository: DemoRepository,
+    selectedCourseForDetail: String?,
+    onSelectCourse: (String) -> Unit,
+    onBack: () -> Unit,
 ) {
-    ElevatedCard {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(entry.studentName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(entry.rollNo, style = MaterialTheme.typography.bodySmall)
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AttendanceStatus.values().forEach { status ->
-                    FilterChip(
-                        selected = selectedStatus == status,
-                        onClick = { if (editable) onStatusChange(status) },
-                        label = { Text(status.label) },
-                        enabled = editable
+    val studentBatch = repository.currentUser?.batch ?: return
+    val studentRoll = repository.currentUser?.rollNo ?: return
+    val allSheets = repository.attendanceSheets.filter { it.batch == studentBatch }
+    val subjects = allSheets.map { it.subject }.distinct().sorted()
+
+    if (selectedCourseForDetail != null) {
+        // Drill-down: date-wise detail for a single course
+        StudentCourseDetailView(
+            courseName = selectedCourseForDetail,
+            sheets = allSheets.filter { it.subject == selectedCourseForDetail },
+            studentRoll = studentRoll,
+            onBack = onBack,
+        )
+    } else {
+        // Summary: subject-wise table
+        StudentCourseSummaryView(
+            subjects = subjects,
+            allSheets = allSheets,
+            studentRoll = studentRoll,
+            onSelectCourse = onSelectCourse,
+        )
+    }
+}
+
+@Composable
+private fun StudentCourseSummaryView(
+    subjects: List<String>,
+    allSheets: List<AttendanceSheet>,
+    studentRoll: String,
+    onSelectCourse: (String) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("My Attendance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+        }
+
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    // Table header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Course Name",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "Total",
+                            modifier = Modifier.width(52.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            "Present",
+                            modifier = Modifier.width(56.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            "Absent",
+                            modifier = Modifier.width(52.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    subjects.forEach { subject ->
+                        val sheetsForSubject = allSheets.filter { it.subject == subject }
+                        val myEntries = sheetsForSubject.flatMap { sheet ->
+                            sheet.entries.filter { it.rollNo == studentRoll }
+                        }
+                        val total = myEntries.size
+                        val present = myEntries.count { it.status == AttendanceStatus.Present }
+                        val absent = myEntries.count { it.status == AttendanceStatus.Absent || it.status == AttendanceStatus.Leave }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectCourse(subject) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                subject,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                total.toString(),
+                                modifier = Modifier.width(52.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                present.toString(),
+                                modifier = Modifier.width(56.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color(0xFF4CAF50),
+                            )
+                            Text(
+                                absent.toString(),
+                                modifier = Modifier.width(52.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = if (absent > 0) Color(0xFFF44336) else Color(0xFF4CAF50),
+                            )
+                        }
+                        HorizontalDivider()
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Tap a course for detailed attendance",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
-            OutlinedTextField(
-                value = remark,
-                onValueChange = onRemarkChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Remark (optional)") },
-                enabled = editable,
-                singleLine = true
-            )
         }
     }
 }
+
+@Composable
+private fun StudentCourseDetailView(
+    courseName: String,
+    sheets: List<AttendanceSheet>,
+    studentRoll: String,
+    onBack: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Spacer(Modifier.width(4.dp))
+                    Text("Back")
+                }
+            }
+        }
+
+        item {
+            ElevatedCard {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        courseName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    // Legend
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.height(14.dp))
+                            Text("Present", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.Close, contentDescription = null, tint = Color(0xFFF44336), modifier = Modifier.height(14.dp))
+                            Text("Absent", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.height(14.dp))
+                            Text("Leave", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    // Column headers
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Date",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "Status",
+                            modifier = Modifier.width(72.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    val sortedSheets = sheets.sortedByDescending { it.dateLabel }
+                    if (sortedSheets.isEmpty()) {
+                        Text(
+                            "No attendance records found.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    sortedSheets.forEach { sheet ->
+                        val myEntry = sheet.entries.firstOrNull { it.rollNo == studentRoll }
+                        if (myEntry != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    sheet.dateLabel,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Row(
+                                    modifier = Modifier.width(72.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    when (myEntry.status) {
+                                        AttendanceStatus.Present -> {
+                                            Icon(Icons.Filled.CheckCircle, contentDescription = "Present", tint = Color(0xFF4CAF50), modifier = Modifier.height(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("P", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                                        }
+                                        AttendanceStatus.Absent -> {
+                                            Icon(Icons.Filled.Close, contentDescription = "Absent", tint = Color(0xFFF44336), modifier = Modifier.height(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("A", color = Color(0xFFF44336), fontWeight = FontWeight.Bold)
+                                        }
+                                        AttendanceStatus.Leave -> {
+                                            Icon(Icons.Filled.CheckCircle, contentDescription = "Leave", tint = Color(0xFFFF9800), modifier = Modifier.height(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("L", color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Inline attendance row for Faculty/Admin ────────────────────────────────────
+
+@Composable
+private fun AttendanceRowInline(
+    entry: AttendanceEntry,
+    selectedStatus: AttendanceStatus,
+    remark: String,
+    onStatusChange: (AttendanceStatus) -> Unit,
+    onRemarkChange: (String) -> Unit,
+    readOnly: Boolean = false,
+) {
+    ElevatedCard {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                // Name and roll on the left
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(entry.studentName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(entry.rollNo, style = MaterialTheme.typography.bodySmall)
+                }
+                // Status buttons on the right, beside the name
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AttendanceStatus.values().forEach { status ->
+                        FilterChip(
+                            selected = selectedStatus == status,
+                            onClick = { if (!readOnly) onStatusChange(status) },
+                            label = { Text(status.label.take(1)) },
+                            enabled = !readOnly,
+                        )
+                    }
+                }
+            }
+            if (!readOnly) {
+                OutlinedTextField(
+                    value = remark,
+                    onValueChange = onRemarkChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Remark (optional)") },
+                    singleLine = true,
+                )
+            } else if (remark.isNotBlank()) {
+                Text("Remark: $remark", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+// ─── Dialogs ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AddBatchDialog(
