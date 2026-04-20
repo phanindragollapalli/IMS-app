@@ -114,6 +114,13 @@ fun TimetableScreen(repository: DemoRepository) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Filter batch", style = MaterialTheme.typography.labelLarge)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item {
+                                    FilterChip(
+                                        selected = repository.selectedTimetableBatch == "All",
+                                        onClick = { repository.selectedTimetableBatch = "All" },
+                                        label = { Text("All") }
+                                    )
+                                }
                                 items(batches) { batch ->
                                     FilterChip(
                                         selected = repository.selectedTimetableBatch == batch,

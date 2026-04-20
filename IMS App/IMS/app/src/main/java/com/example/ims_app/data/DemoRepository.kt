@@ -542,7 +542,9 @@ object DemoRepository {
             UserRole.Faculty -> timetableEntries.toList()
             UserRole.Student -> timetableEntries.filter { it.batch == (currentUser?.batch ?: selectedTimetableBatch) }
         }
-        val batchFiltered = if (activeRole == UserRole.Student) roleFiltered else roleFiltered.filter { it.batch == selectedTimetableBatch }
+        val batchFiltered = if (activeRole == UserRole.Student) roleFiltered
+            else if (selectedTimetableBatch == "All") roleFiltered
+            else roleFiltered.filter { it.batch == selectedTimetableBatch }
         val searched = if (query.isBlank()) batchFiltered else batchFiltered.filter {
             it.subject.lowercase().contains(query) || it.batch.lowercase().contains(query) || it.facultyName.lowercase().contains(query)
         }
@@ -571,9 +573,8 @@ object DemoRepository {
         if (hasTimetableConflict(entry)) {
             return "Time conflict detected for ${entry.batch} on ${entry.day.label}."
         }
-        if (isFacultyWorkloadExceeded(entry.facultyUsername, entry.day, entry.id)) {
-            return "Faculty workload limit exceeded for ${entry.day.label}."
-        }
+        val workloadError = getFacultyWorkloadError(entry.facultyUsername, entry.day, entry.id)
+        if (workloadError != null) return workloadError
 
         val index = timetableEntries.indexOfFirst { it.id == entry.id }
         if (index >= 0) {
@@ -606,11 +607,16 @@ object DemoRepository {
         }
     }
 
-    private fun isFacultyWorkloadExceeded(facultyUsername: String, day: WeekDay, excludeId: Int): Boolean {
+    private fun getFacultyWorkloadError(facultyUsername: String, day: WeekDay, excludeId: Int): String? {
         val dayLoad = timetableEntries.count {
             it.facultyUsername == facultyUsername && it.day == day && it.id != excludeId
         }
-        return dayLoad >= 5
+        if (dayLoad >= 3) return "Faculty can have at most 3 classes per day. Limit reached for ${day.label}."
+        val weekLoad = timetableEntries.count {
+            it.facultyUsername == facultyUsername && it.id != excludeId
+        }
+        if (weekLoad >= 12) return "Faculty can have at most 12 classes per week. Weekly limit reached."
+        return null
     }
 
     private fun isCourseWeeklyLimitExceeded(candidate: TimetableEntry): Boolean {
